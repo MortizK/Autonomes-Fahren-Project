@@ -45,3 +45,11 @@ Die test Dateien können mit `python <test-file>.py` ausgeführt werden. Die Sim
 ## 4. Hinweise
 
 Die Dateien `main.py`, `env_wrapper.py` und `input_controller.py` dürfen nicht verändert werden, damit die Ergebnisse vergleichbar bleiben. Alle anderen Dateien können beliebig verändert werden.
+
+## 5. Commit Richtlinien
+
+Fange jeden Commit damit an, an welchem Teilpaket gearbeitet wurde. (`LaneDetection`, `PathPlanning`, `LateralControl`, `LongitudinalControl`) oder in Ausnahmefällen `Other`.
+
+Darauf soll eine kurzbeschreibung vorgenommen werden.
+
+Appell: Dokumentiere Design Entscheidungen in `CHANGES.md`
