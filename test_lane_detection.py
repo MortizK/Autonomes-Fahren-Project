@@ -20,7 +20,11 @@ def run(env, input_controller: InputController):
 
         cv_image = np.asarray(lane_detection.debug_image, dtype=np.uint8)
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
-        cv_image = cv2.resize(cv_image, np.asarray(state_image.shape[:2]) * 6)
+        cv_image = cv2.resize(
+            cv_image,
+            np.asarray(state_image.shape[:2]) * 6,
+            interpolation=cv2.INTER_NEAREST,
+        )
         cv2.imshow("Car Racing - Lane Detection", cv_image)
         cv2.waitKey(1)
 
