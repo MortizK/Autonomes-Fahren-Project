@@ -23,7 +23,7 @@ class LaneDetection:
 
     def _create_road_mask(self, frame: np.ndarray) -> np.ndarray:
         """Return 255 for road pixels and 0 for green pixels."""
-        LIMIT = 135
+        LIMIT = 140
 
         red = frame[..., 0].astype(np.int16)
         green = frame[..., 1].astype(np.int16)
@@ -107,12 +107,9 @@ class LaneDetection:
 
         center = points.mean(axis=0)
 
-        # Mirror the points across the center
-        mirror_points = 2 * center - points
-
         angles = np.arctan2(
-            mirror_points[:, 0] - center[0],   # dx
-            mirror_points[:, 1] - center[1]    # dy
+            points[:, 1] - center[1],    # dy
+            points[:, 0] - center[0]   # dx
         )
 
         self.debug_image[int(center[0]), int(center[1])] = 0
@@ -121,84 +118,103 @@ class LaneDetection:
 
         return points[np.argsort(angles)], distance_list[np.argsort(angles)]
 
+    def _nearest_neighbor_walk(self, point_list: np.ndarray) -> list[np.ndarray]:
+        """
+        Perform a nearest neighbor walk through the given points.
+
+        args:
+            point_list (np.ndarray): An array of points to walk through.
+
+        returns:
+            walk_points (list[np.ndarray]): A list of points representing the walk.
+        """
+        start_point = np.asarray(point_list[0], dtype=float)
+        current_point = np.asarray(point_list[0], dtype=float)
+        previous_direction = np.array([1.0, 0.0])
+
+        walk_points = [current_point.copy()]
+        remaining_points = np.asarray(point_list[1:], dtype=float)
+
+        max_distance = 4.0
+        alpha = 0.5
+        beta = 0.5
+
+        while len(remaining_points) > 0:
+            displacements = remaining_points - current_point
+            distances = np.linalg.norm(displacements, axis=1)
+
+            # Exclude points that are too far away
+            valid = (distances > 0) & (distances <= max_distance)
+
+            if not np.any(valid):
+                break
+
+            candidate_indices = np.flatnonzero(valid)
+            candidates = remaining_points[valid]
+            candidate_distances = distances[valid]
+
+            directions = displacements[valid] / candidate_distances[:, None]
+
+            # Directional alignment: 1 means straight ahead, -1 means backwards
+            alignment = directions @ previous_direction
+
+            # Penalize sharp turns
+            distance_score = candidate_distances / max_distance
+            turn_score = 1.0 - alignment
+
+            scores = alpha * distance_score + beta * turn_score
+
+            best_local_index = np.argmin(scores)
+            best_index = candidate_indices[best_local_index]
+
+            next_point = remaining_points[best_index]
+            next_direction = directions[best_local_index]
+
+            # check for loop closure: 
+            closure_distance = 2.0
+            distances_to_start = np.linalg.norm(next_point - start_point)
+            if len(walk_points) > 4 and distances_to_start < closure_distance:
+                break
+
+            walk_points.append(next_point.copy())
+
+            current_point = next_point
+            previous_direction = next_direction
+
+            remaining_points = np.delete(remaining_points, best_index, axis=0)
+
+        return walk_points
+
     def _create_pace_notes(self, road_mask: np.ndarray) -> str:
             """
             Create pace notes based on the road mask.
     
             returns:
                 pace_notes (str): A string representing the pace notes.
-            """
+            """            
+            # road_mask = road_mask[35:84, 0:52]  # Cut the image to the relevant area
             road_mask = road_mask[57:84, 17:51]  # Cut the image to the relevant area
             np.set_printoptions(threshold=np.inf)
-            self.debug_image = road_mask.copy()  # For debugging purposes
+            # self.debug_image = road_mask.copy()  # For debugging purposes
     
             point_list = np.argwhere(road_mask == 0)  # Get the coordinates of the road pixels
+
+            point_list = self._order_closed_contour(point_list)[0]  # Order the points in a closed contour
             
             print(f"total points: {len(point_list)}")
             if len(point_list) == 0:
                 return "MC1 MC2BC"
     
-            # Phase 0: Sort the points by angle around the track center
-            ordered_point_list, distance_list = self._order_closed_contour(point_list)
+            # Phase 1 - Nearest Neighbor Walk (with directionality)
+            walk_points = self._nearest_neighbor_walk(point_list)
 
-            n = len(ordered_point_list)
-            averaged_vector_list = []
-
-            # Phase 1: Average the directions toward the 4 closest of the next 10 points
-            window_size = min(10, n - 1)
-            choose = min(4, window_size)
-
-            for i in range(n):
-                x, y = ordered_point_list[i]
-
-                # Get the next 10 points along the closed contour
-                candidate_indices = [
-                    (i + j + 1) % n
-                    for j in range(window_size)
-                ]
-
-                candidates = np.asarray(
-                    [ordered_point_list[j] for j in candidate_indices],
-                    dtype=float
-                )
-
-                # Calculate displacement vectors from the current point
-                displacements = candidates - np.array([x, y])
-
-                # Calculate Euclidean distances
-                distances = np.linalg.norm(displacements, axis=1)
-
-                # Select the 4 spatially closest candidates
-                closest_indices = np.argsort(distances)[:choose]
-
-                # Average their displacement vectors
-                avg_vector = np.mean(displacements[closest_indices], axis=0)
-
-                averaged_vector_list.append(tuple(avg_vector))
-
-            # Phase 0/3 - Calculate the angles between the vectors to find the corners
-            angle_list = []
-            for i in range(len(averaged_vector_list)):
-                x1, y1 = averaged_vector_list[i]
-                x2, y2 = averaged_vector_list[(i + 1) % len(averaged_vector_list)]
-                angle = np.arctan2(y2, x2) - np.arctan2(y1, x1)
-                angle_list.append(angle)
-
-            plt.figure(figsize=(10, 5))
-            plt.subplot(1, 2, 1)
-            plt.imshow(self.debug_image, cmap='gray')
-            plt.title('Road Mask with Ordered Points')
-            plt.subplot(1, 2, 2)
-            plt.plot(angle_list)
-            plt.title('Angle List')
-            plt.savefig("debug_angle_list.png")
-            plt.show()
-            plt.close()
+            self.debug_image = np.zeros(road_mask.shape, dtype=np.uint8)
+            for i in range(len(walk_points) - 1):
+                x1, y1 = walk_points[i]
+                self.debug_image[int(x1), int(y1)] = 25 + i
+            # print(self.debug_image)
     
-            # Phase 1 - Create the line segments from the points
-            line_segments = []
-    
-            # Phase 2 - Create the Pace Notes from the points
+            # Phase N - Create the Pace Notes from the points
             pace_notes = ["MC1"] # Start with a default pace note
     
             pace_notes.append("MC2BC") # End with a default pace note
