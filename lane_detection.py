@@ -3,10 +3,23 @@ import numpy as np
 
 class LaneDetection:
     debug_image: np.ndarray
+    road_mask: np.ndarray
 
-    def __init__(self):
+    def __init__(self, green_tolerance: int = 30):
         self.debug_image = np.zeros((98, 98, 3), dtype=np.uint8)
-        pass
+        self.road_mask = np.zeros((84, 98), dtype=np.uint8)
+        self.green_tolerance = green_tolerance
+
+    def _create_road_mask(self, frame: np.ndarray) -> np.ndarray:
+        """Return 255 for road pixels and 0 for green pixels."""
+        red = frame[..., 0].astype(np.int16)
+        green = frame[..., 1].astype(np.int16)
+        blue = frame[..., 2].astype(np.int16)
+
+        is_green = (green > red + self.green_tolerance) & (
+            green > blue + self.green_tolerance
+        )
+        return np.where(is_green, 0, 255).astype(np.uint8)
 
     def detect(self, observation: np.ndarray) -> tuple[list, list]:
         """
@@ -25,14 +38,11 @@ class LaneDetection:
         # Ausschneiden der unteren 14 Pixel, da dort keine Fahrspuren sind
         self.debug_image = self.debug_image[0:84, 0:98]
         # Maskierung des Autos
-        self.debug_image[66:80, 45:51] = [102, 102, 102]  # Schwarze Maske
+        self.debug_image[66:77, 45:51] = [100, 100, 100]  # Schwarze Maske
 
-        # Umwandlung in Graustufen
-        # Track ist Weiß und hat Schwarze Ränder
-        track_filter = [1.2, 1.2, 0]
-        track_image = np.dot(self.debug_image[..., :3], track_filter)
-
-        self.debug_image = track_image.astype(np.uint8)
+        # Alles, was nicht grün ist, wird als Straße markiert.
+        self.road_mask = self._create_road_mask(self.debug_image)
+        self.debug_image = self.road_mask
 
         # Phase 2: Lane Detection
         
@@ -41,4 +51,4 @@ class LaneDetection:
 
 
         # (Phase 4: Funktionsanpassung, Mathematische Darstellung der Fahrspuren)
-        pass
+        return [], []

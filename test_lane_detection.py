@@ -7,8 +7,10 @@ from env_wrapper import CarRacingEnvWrapper
 from input_controller import InputController
 from lane_detection import LaneDetection
 
+from main import draw_debug_overlay
 
-def run(env, input_controller: InputController):
+
+def run(env, input_controller: InputController, display_debug=True):
     lane_detection = LaneDetection()
 
     seed = int(np.random.randint(0, int(1e6)))
@@ -37,6 +39,9 @@ def run(env, input_controller: InputController):
         ]
         state_image, r, done, trunc, info = env.step(a)
         total_reward += r
+
+        if display_debug:
+            draw_debug_overlay(env, cv_image, info, a)
 
         # Reset environment if the run is skipped
         input_controller.update()

@@ -34,6 +34,8 @@ Each Wheel has:
 - `skid_start` and `skid_particle`: skid-mark state, useful as a qualitative
   slip indicator.
 
+The Grid is 0.6 on the Curb and still 1.0 when slightly of track.
+
 The longitudinal slip estimate is:
 
 `longitudinal_slip = tire_speed - forward_speed`
