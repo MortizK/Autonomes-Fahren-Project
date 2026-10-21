@@ -132,6 +132,7 @@ class LaneDetection:
 
         left_lane_boundaries = []
         right_lane_boundaries = []
+        # Runtime: until here p95 6ms
 
         left_start, right_start = self._get_starting_point(self.edge_mask)
 
@@ -148,6 +149,7 @@ class LaneDetection:
             for count, (x, y) in enumerate(right_lane_boundaries, start=1):
                 self.debug_image[y + 1, x + 1] = [0, 0, 255 - count / len(right_lane_boundaries) * 100]   # Blue for right lane
             self.debug_image[right_start[1] + 1, right_start[0] + 1] = [255, 255, 255]
+        # Runtime: until here p95 14ms
 
         # self.debug_image = self.first_image
 

@@ -1,4 +1,5 @@
 import argparse
+import time
 
 import cv2
 import gymnasium as gym
@@ -11,7 +12,12 @@ from main import draw_debug_overlay
 
 
 def run(env, input_controller: InputController, display_debug=True):
+    # Initialization time of the lane detection algorithm
+    
+    start_time = time.time()
     lane_detection = LaneDetection()
+    end_time = time.time()
+    detection_times = []
 
     seed = int(np.random.randint(0, int(1e6)))
     # seed = 197453   # Seed with S-Curves and U-Turns
@@ -19,7 +25,10 @@ def run(env, input_controller: InputController, display_debug=True):
     total_reward = 0.0
 
     while not input_controller.quit:
+        start_time = time.time()
         lane_detection.detect(state_image)
+        end_time = time.time()
+        detection_times.append(end_time - start_time)
 
         cv_image = np.asarray(lane_detection.debug_image, dtype=np.uint8)
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
@@ -49,14 +58,21 @@ def run(env, input_controller: InputController, display_debug=True):
         if done or input_controller.skip:
             print(f"seed: {seed:06d}     reward: {total_reward:06.2F}")
 
+            # save the first frame of the last run for debugging
+            if lane_detection.first_image is not None:
+                cv2.imwrite(f"./data/firstFrames/first_frame_{seed}.png", lane_detection.first_image)
+
             input_controller.skip = False
             seed = int(np.random.randint(0, int(1e6)))
             state_image, info = env.reset(seed=seed)
             total_reward = 0.0
 
-    # save the first frame of the last run for debugging
-    if lane_detection.first_image is not None:
-        cv2.imwrite(f"./data/firstFrames/first_frame_{seed}.png", lane_detection.first_image)
+    # Print Boxplot values of the detection times
+    print(f"p25 : {np.percentile(detection_times, 25):.4f} s   std : {np.std(detection_times):.4f} s")
+    print(f"p50 : {np.percentile(detection_times, 50):.4f} s")
+    print(f"p75 : {np.percentile(detection_times, 75):.4f} s")
+    print(f"p95 : {np.percentile(detection_times, 95):.4f} s")
+    print(f"p99 : {np.percentile(detection_times, 99):.4f} s")
 
 
 def main():
