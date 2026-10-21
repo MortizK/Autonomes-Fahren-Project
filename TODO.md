@@ -17,6 +17,7 @@
 - [ ] Find a Path that minimizes a function (time)
 - [ ] Discuss if we are allowed to use the first frame global view
   - [ ] Do we want to use it and how?
+  - [ ] Rally Notation? ([Pace Notes](https://en.wikipedia.org/wiki/Pacenotes))
 - [ ] Performance Analysis (Real Time?, how many ms?)
 
 ## Lateral Control
