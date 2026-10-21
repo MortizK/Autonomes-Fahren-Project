@@ -2,14 +2,18 @@ import numpy as np
 
 
 class LaneDetection:
+    CAR_CENTER_X = 48
+    CAR_BOTTOM_Y = 77
     debug_image: np.ndarray
     road_mask: np.ndarray
     edge_mask: np.ndarray
+    first_image: np.ndarray
 
     def __init__(self, color_tolerance: int = 100):
         self.debug_image = np.zeros((98, 98, 3), dtype=np.uint8)
         self.road_mask = np.zeros((84, 98), dtype=np.uint8)
         self.edge_mask = np.zeros((84, 98), dtype=np.uint8)
+        self.first_image = None
         self.color_tolerance = color_tolerance
 
     def _create_road_mask(self, frame: np.ndarray) -> np.ndarray:
@@ -69,6 +73,30 @@ class LaneDetection:
                 break
         return lane_boundaries
 
+    def _get_starting_point(self, edge_mask: np.ndarray) -> tuple[tuple[int, int], tuple[int, int]]:
+        left_start = None
+        right_start = None
+
+        white_cols = np.where(edge_mask[77, :] > 0)[0]  # Get the x-coordinates of the white pixels in the bottom row
+
+        if len(white_cols) == 2:
+            left_start = (white_cols[0], self.CAR_BOTTOM_Y)
+            right_start = (white_cols[1], self.CAR_BOTTOM_Y)
+        elif self.road_mask[self.CAR_BOTTOM_Y, self.CAR_CENTER_X] == 0:
+            # If the car is on the road, find the closest white pixel to the left and right of the car
+            on_the_left = white_cols[white_cols < self.CAR_CENTER_X]
+            on_the_right = white_cols[white_cols > self.CAR_CENTER_X]
+            # Start with the closest white pixel to the left of the car for the left lane
+            left_start = None if len(on_the_left) == 0 else (on_the_left[-1], self.CAR_BOTTOM_Y)
+            # Start with the closest white pixel to the right of the car for the right lane
+            right_start = None if len(on_the_right) == 0 else (on_the_right[0], self.CAR_BOTTOM_Y)
+        else:
+            # TODO: Do we need behavior for when the car is not on the road? For now, we will just return empty lists.
+            left_start = None
+            right_start = None
+
+        return left_start, right_start
+
     def detect(self, observation: np.ndarray) -> tuple[list, list]:
         """
         Detects the lane boundaries in the given observation.
@@ -80,18 +108,19 @@ class LaneDetection:
             left_lane_boundaries (list): A list of points representing the left lane boundaries.
             right_lane_boundaries (list): A list of points representing the right lane boundaries.
         """
-        CAR_CENTER_X = 48
-        CAR_BOTTOM_Y = 77
 
         self.debug_image = observation.copy()
 
+        if self.first_image is None:
+            self.first_image = observation.copy()
+
         # Phase 1: Preprocessing
         # Ausschneiden der unteren 14 Pixel, da dort keine Fahrspuren sind
-        self.debug_image = self.debug_image[0:84, 0:98]
+        self.cut_image = self.debug_image[0:84, 0:98]
         # Maskierung des Autos
-        self.debug_image[66:CAR_BOTTOM_Y, CAR_CENTER_X-2:CAR_CENTER_X+2] = [100, 100, 100]
+        self.cut_image[66:self.CAR_BOTTOM_Y, self.CAR_CENTER_X-2:self.CAR_CENTER_X+2] = [100, 100, 100]
 
-        self.road_mask = self._create_road_mask(self.debug_image)
+        self.road_mask = self._create_road_mask(self.cut_image)
         # self.debug_image = self.road_mask
 
         # Phase 2: Lane Detection
@@ -99,45 +128,28 @@ class LaneDetection:
         # self.debug_image = self.edge_mask
 
         # Phase 3: Zuordnung zu den Fahrspuren
+        self.debug_image = observation.copy()
+
         left_lane_boundaries = []
         right_lane_boundaries = []
 
-        # Find the Start from the side of the car
-        white_cols = np.where(self.edge_mask[CAR_BOTTOM_Y] > 0)[0]
-
-        if len(white_cols) == 0:
-            return left_lane_boundaries, right_lane_boundaries
-        else:
-            on_the_left = white_cols[white_cols < CAR_CENTER_X]
-            on_the_right = white_cols[white_cols > CAR_CENTER_X]
-            # Start with the closest white pixel to the left of the car for the left lane
-            left_start = (on_the_left[-1] if len(on_the_left) > 0 else white_cols[0], CAR_BOTTOM_Y)
-            # Start with the closest white pixel to the right of the car for the right lane
-            right_start = (on_the_right[0] if len(on_the_right) > 0 else white_cols[-1], CAR_BOTTOM_Y)
+        left_start, right_start = self._get_starting_point(self.edge_mask)
 
         # Append the left and right lane boundaries from the detected edges
-        left_lane_boundaries = self._follow_lane(left_start, self.edge_mask)
-        right_lane_boundaries = self._follow_lane(right_start, self.edge_mask)
+        if left_start is not None:
+            left_lane_boundaries = self._follow_lane(left_start, self.edge_mask)
+            # draw the left lane boundaries on the debug image
+            for count, (x, y) in enumerate(left_lane_boundaries, start=1):
+                self.debug_image[y + 1, x + 1] = [255 - count / len(left_lane_boundaries) * 100, 0, 0]   # Red for left lane
+            self.debug_image[left_start[1] + 1, left_start[0] + 1] = [255, 255, 255]
+        
+        if right_start is not None:
+            right_lane_boundaries = self._follow_lane(right_start, self.edge_mask)
+            for count, (x, y) in enumerate(right_lane_boundaries, start=1):
+                self.debug_image[y + 1, x + 1] = [0, 0, 255 - count / len(right_lane_boundaries) * 100]   # Blue for right lane
+            self.debug_image[right_start[1] + 1, right_start[0] + 1] = [255, 255, 255]
 
-        overlay_image = observation.copy()
-
-        # overlay the detected lane boundaries on the debug image
-        count = 0
-        for x, y in left_lane_boundaries:
-            # Offset due to smaller debug image size
-            count += 1
-            overlay_image[y + 1, x + 1] = [255 - count * 2, 0, 0]  # Red for left lane
-
-        count = 0
-        for x, y in right_lane_boundaries:
-            # Offset due to smaller debug image size
-            count += 1
-            overlay_image[y + 1, x + 1] = [0, 0, 255 - count * 2]  # Blue for right lane
-
-        self.debug_image = overlay_image
-
-        for i in white_cols:
-            self.debug_image[CAR_BOTTOM_Y + 1, i + 1] = [255, 255, 255]  # White for detected edges
+        # self.debug_image = self.first_image
 
         # (Phase 4: Funktionsanpassung, Mathematische Darstellung der Fahrspuren)
         return left_lane_boundaries, right_lane_boundaries

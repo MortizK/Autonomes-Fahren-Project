@@ -156,6 +156,14 @@ Important planning quantities include:
 A good target speed must account for combined friction. Reducing speed before
 the corner is safer than braking while already using most lateral grip.
 
+### Difficult Seeds
+
+| Seed | Notes |
+| ---- | ----- |
+| 197453 | S-Turn and some U-Turns |
+
+Also, maybe we can Use the First Frame of the Simulation to estimate a path planning. As we can expect some Turns from the global view.
+
 ## Control and State Estimation
 
 An autonomous controller should maintain at least:
