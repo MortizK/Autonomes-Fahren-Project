@@ -23,7 +23,7 @@ class LaneDetection:
 
     def _create_road_mask(self, frame: np.ndarray) -> np.ndarray:
         """Return 255 for road pixels and 0 for green pixels."""
-        LIMIT = 140
+        LIMIT = 135
 
         red = frame[..., 0].astype(np.int16)
         green = frame[..., 1].astype(np.int16)
@@ -128,31 +128,71 @@ class LaneDetection:
             returns:
                 pace_notes (str): A string representing the pace notes.
             """
-            road_mask = road_mask[35:84, 0:52]  # Cut the image to the relevant area
+            road_mask = road_mask[57:84, 17:51]  # Cut the image to the relevant area
+            np.set_printoptions(threshold=np.inf)
             self.debug_image = road_mask.copy()  # For debugging purposes
     
             point_list = np.argwhere(road_mask == 0)  # Get the coordinates of the road pixels
+            
             print(f"total points: {len(point_list)}")
             if len(point_list) == 0:
                 return "MC1 MC2BC"
     
-            # Phase 0 - Sort the points, so that neighboring points are near each other
+            # Phase 0: Sort the points by angle around the track center
             ordered_point_list, distance_list = self._order_closed_contour(point_list)
-    
-            for count, (x, y) in enumerate(ordered_point_list):
-                self.debug_image[x, y] = 25 + count / len(ordered_point_list) * 205
 
-            # Plot the distance list for debugging purposes
-            smooth_kernel_size = 5
-            smooth_distance_list = np.convolve(distance_list, np.ones(smooth_kernel_size) /smooth_kernel_size, mode='valid')
-            plt.figure(figsize=(10, 4))
-            plt.plot(distance_list)
-            plt.plot(smooth_distance_list, color='red', linewidth=2)
-            plt.title("Distance from Center to Road Boundary")
-            plt.xlabel("Point Index")
-            plt.ylabel("Distance (pixels)")
-            plt.grid()
-            plt.savefig("./data/debug/distance_plot.png")
+            n = len(ordered_point_list)
+            averaged_vector_list = []
+
+            # Phase 1: Average the directions toward the 4 closest of the next 10 points
+            window_size = min(10, n - 1)
+            choose = min(4, window_size)
+
+            for i in range(n):
+                x, y = ordered_point_list[i]
+
+                # Get the next 10 points along the closed contour
+                candidate_indices = [
+                    (i + j + 1) % n
+                    for j in range(window_size)
+                ]
+
+                candidates = np.asarray(
+                    [ordered_point_list[j] for j in candidate_indices],
+                    dtype=float
+                )
+
+                # Calculate displacement vectors from the current point
+                displacements = candidates - np.array([x, y])
+
+                # Calculate Euclidean distances
+                distances = np.linalg.norm(displacements, axis=1)
+
+                # Select the 4 spatially closest candidates
+                closest_indices = np.argsort(distances)[:choose]
+
+                # Average their displacement vectors
+                avg_vector = np.mean(displacements[closest_indices], axis=0)
+
+                averaged_vector_list.append(tuple(avg_vector))
+
+            # Phase 0/3 - Calculate the angles between the vectors to find the corners
+            angle_list = []
+            for i in range(len(averaged_vector_list)):
+                x1, y1 = averaged_vector_list[i]
+                x2, y2 = averaged_vector_list[(i + 1) % len(averaged_vector_list)]
+                angle = np.arctan2(y2, x2) - np.arctan2(y1, x1)
+                angle_list.append(angle)
+
+            plt.figure(figsize=(10, 5))
+            plt.subplot(1, 2, 1)
+            plt.imshow(self.debug_image, cmap='gray')
+            plt.title('Road Mask with Ordered Points')
+            plt.subplot(1, 2, 2)
+            plt.plot(angle_list)
+            plt.title('Angle List')
+            plt.savefig("debug_angle_list.png")
+            plt.show()
             plt.close()
     
             # Phase 1 - Create the line segments from the points
