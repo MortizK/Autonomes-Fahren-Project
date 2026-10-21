@@ -54,6 +54,10 @@ def run(env, input_controller: InputController, display_debug=True):
             state_image, info = env.reset(seed=seed)
             total_reward = 0.0
 
+    # save the first frame of the last run for debugging
+    if lane_detection.first_image is not None:
+        cv2.imwrite(f"./data/firstFrames/first_frame_{seed}.png", lane_detection.first_image)
+
 
 def main():
     parser = argparse.ArgumentParser()
