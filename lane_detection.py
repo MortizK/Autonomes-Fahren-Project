@@ -1,5 +1,7 @@
+import cv2
 import numpy as np
 
+import matplotlib.pyplot as plt
 
 class LaneDetection:
     CAR_CENTER_X = 48
@@ -8,17 +10,20 @@ class LaneDetection:
     road_mask: np.ndarray
     edge_mask: np.ndarray
     first_image: np.ndarray
+    first_image_road_mask: np.ndarray
+    pace_notes: str
 
-    def __init__(self, color_tolerance: int = 100):
+    def __init__(self):
         self.debug_image = np.zeros((98, 98, 3), dtype=np.uint8)
         self.road_mask = np.zeros((84, 98), dtype=np.uint8)
         self.edge_mask = np.zeros((84, 98), dtype=np.uint8)
         self.first_image = None
-        self.color_tolerance = color_tolerance
+        self.first_image_road_mask = None
+        self.pace_notes = ""
 
     def _create_road_mask(self, frame: np.ndarray) -> np.ndarray:
         """Return 255 for road pixels and 0 for green pixels."""
-        LIMIT = 120
+        LIMIT = 140
 
         red = frame[..., 0].astype(np.int16)
         green = frame[..., 1].astype(np.int16)
@@ -97,6 +102,68 @@ class LaneDetection:
 
         return left_start, right_start
 
+    def _order_closed_contour(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        points = np.asarray(points, dtype=np.uint8)  # Shape: (N, 2)
+
+        center = points.mean(axis=0)
+
+        # Mirror the points across the center
+        mirror_points = 2 * center - points
+
+        angles = np.arctan2(
+            mirror_points[:, 0] - center[0],   # dx
+            mirror_points[:, 1] - center[1]    # dy
+        )
+
+        self.debug_image[int(center[0]), int(center[1])] = 0
+
+        distance_list = np.linalg.norm(points - center, axis=1)
+
+        return points[np.argsort(angles)], distance_list[np.argsort(angles)]
+
+    def _create_pace_notes(self, road_mask: np.ndarray) -> str:
+            """
+            Create pace notes based on the road mask.
+    
+            returns:
+                pace_notes (str): A string representing the pace notes.
+            """
+            road_mask = road_mask[35:84, 0:52]  # Cut the image to the relevant area
+            self.debug_image = road_mask.copy()  # For debugging purposes
+    
+            point_list = np.argwhere(road_mask == 0)  # Get the coordinates of the road pixels
+            print(f"total points: {len(point_list)}")
+            if len(point_list) == 0:
+                return "MC1 MC2BC"
+    
+            # Phase 0 - Sort the points, so that neighboring points are near each other
+            ordered_point_list, distance_list = self._order_closed_contour(point_list)
+    
+            for count, (x, y) in enumerate(ordered_point_list):
+                self.debug_image[x, y] = 25 + count / len(ordered_point_list) * 205
+
+            # Plot the distance list for debugging purposes
+            smooth_kernel_size = 5
+            smooth_distance_list = np.convolve(distance_list, np.ones(smooth_kernel_size) /smooth_kernel_size, mode='valid')
+            plt.figure(figsize=(10, 4))
+            plt.plot(distance_list)
+            plt.plot(smooth_distance_list, color='red', linewidth=2)
+            plt.title("Distance from Center to Road Boundary")
+            plt.xlabel("Point Index")
+            plt.ylabel("Distance (pixels)")
+            plt.grid()
+            plt.savefig("./data/debug/distance_plot.png")
+            plt.close()
+    
+            # Phase 1 - Create the line segments from the points
+            line_segments = []
+    
+            # Phase 2 - Create the Pace Notes from the points
+            pace_notes = ["MC1"] # Start with a default pace note
+    
+            pace_notes.append("MC2BC") # End with a default pace note
+            return " ".join(pace_notes)
+
     def detect(self, observation: np.ndarray) -> tuple[list, list]:
         """
         Detects the lane boundaries in the given observation.
@@ -109,26 +176,30 @@ class LaneDetection:
             right_lane_boundaries (list): A list of points representing the right lane boundaries.
         """
 
-        self.debug_image = observation.copy()
-
         if self.first_image is None:
             self.first_image = observation.copy()
 
         # Phase 1: Preprocessing
         # Ausschneiden der unteren 14 Pixel, da dort keine Fahrspuren sind
-        self.cut_image = self.debug_image[0:84, 0:98]
+        self.cut_image = observation[0:84, 0:98]
         # Maskierung des Autos
-        self.cut_image[66:self.CAR_BOTTOM_Y, self.CAR_CENTER_X-2:self.CAR_CENTER_X+2] = [100, 100, 100]
+        if self.first_image_road_mask is not None:
+            self.cut_image[66:self.CAR_BOTTOM_Y, self.CAR_CENTER_X-2:self.CAR_CENTER_X+2] = [100, 100, 100]
 
         self.road_mask = self._create_road_mask(self.cut_image)
         # self.debug_image = self.road_mask
+
+        if self.first_image_road_mask is None:
+            self.first_image_road_mask = self.road_mask
+            self.pace_notes = self._create_pace_notes(self.first_image_road_mask)
+            print(f"Co-Driver: Pace Notes '{self.pace_notes}'")
 
         # Phase 2: Lane Detection
         self.edge_mask = self._detect_edges(self.road_mask)
         # self.debug_image = self.edge_mask
 
         # Phase 3: Zuordnung zu den Fahrspuren
-        self.debug_image = observation.copy()
+        self.overlay_image = observation.copy()
 
         left_lane_boundaries = []
         right_lane_boundaries = []
@@ -141,16 +212,17 @@ class LaneDetection:
             left_lane_boundaries = self._follow_lane(left_start, self.edge_mask)
             # draw the left lane boundaries on the debug image
             for count, (x, y) in enumerate(left_lane_boundaries, start=1):
-                self.debug_image[y + 1, x + 1] = [255 - count / len(left_lane_boundaries) * 100, 0, 0]   # Red for left lane
-            self.debug_image[left_start[1] + 1, left_start[0] + 1] = [255, 255, 255]
+                self.overlay_image[y + 1, x + 1] = [255 - count / len(left_lane_boundaries) * 100, 0, 0]   # Red for left lane
+            self.overlay_image[left_start[1] + 1, left_start[0] + 1] = [255, 255, 255]
         
         if right_start is not None:
             right_lane_boundaries = self._follow_lane(right_start, self.edge_mask)
             for count, (x, y) in enumerate(right_lane_boundaries, start=1):
-                self.debug_image[y + 1, x + 1] = [0, 0, 255 - count / len(right_lane_boundaries) * 100]   # Blue for right lane
-            self.debug_image[right_start[1] + 1, right_start[0] + 1] = [255, 255, 255]
+                self.overlay_image[y + 1, x + 1] = [0, 0, 255 - count / len(right_lane_boundaries) * 100]   # Blue for right lane
+            self.overlay_image[right_start[1] + 1, right_start[0] + 1] = [255, 255, 255]
         # Runtime: until here p95 14ms
 
+        # self.debug_image = self.overlay_image
         # self.debug_image = self.first_image
 
         # (Phase 4: Funktionsanpassung, Mathematische Darstellung der Fahrspuren)

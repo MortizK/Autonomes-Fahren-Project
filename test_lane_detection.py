@@ -20,7 +20,7 @@ def run(env, input_controller: InputController, display_debug=True):
     detection_times = []
 
     seed = int(np.random.randint(0, int(1e6)))
-    # seed = 197453   # Seed with S-Curves and U-Turns
+    seed = 197453   # Seed with S-Curves and U-Turns
     state_image, info = env.reset(seed=seed)
     total_reward = 0.0
 
@@ -50,6 +50,8 @@ def run(env, input_controller: InputController, display_debug=True):
         state_image, r, done, trunc, info = env.step(a)
         total_reward += r
 
+        # done = True     # Debug to Capture the first frame of each run
+
         if display_debug:
             draw_debug_overlay(env, state_image, info, a)
 
@@ -57,10 +59,12 @@ def run(env, input_controller: InputController, display_debug=True):
         input_controller.update()
         if done or input_controller.skip:
             print(f"seed: {seed:06d}     reward: {total_reward:06.2F}")
-
+    
             # save the first frame of the last run for debugging
             if lane_detection.first_image is not None:
                 cv2.imwrite(f"./data/firstFrames/first_frame_{seed}.png", lane_detection.first_image)
+            if lane_detection.first_image_road_mask is not None:
+                cv2.imwrite(f"./data/firstFrames/first_frame_road_mask_{seed}.png", lane_detection.first_image_road_mask)
 
             input_controller.skip = False
             seed = int(np.random.randint(0, int(1e6)))
