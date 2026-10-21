@@ -17,5 +17,5 @@ class LateralControl:
         Returns:
             steering_angle (float): -1 is full left, +1 is full right.
         """
-        pass
+        return 0.0
 

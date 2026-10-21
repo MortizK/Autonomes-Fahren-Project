@@ -18,13 +18,13 @@ class LongitudinalControl:
             throttle (float): 0 to 1.
             brake (float): 0 to 1.
         """
-        pass
+        return 0.0, 0.0
 
-    def predict_target_speed(self) -> float:
+    def predict_target_speed(self, curvature: float) -> float:
         """
         Predicts the target speed based on the current state of the car.
 
         Returns:
             float: The predicted target speed.
         """
-        pass
+        return 0.0

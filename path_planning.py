@@ -18,4 +18,4 @@ class PathPlanning:
             trajectory (list): A list of points representing the planned trajectory.
             curvature (list): The curvature of the planned trajectory.
         """
-        pass
+        return [], []
