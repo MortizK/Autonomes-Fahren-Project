@@ -41,7 +41,7 @@ def run(env, input_controller: InputController, display_debug=True):
         total_reward += r
 
         if display_debug:
-            draw_debug_overlay(env, cv_image, info, a)
+            draw_debug_overlay(env, state_image, info, a)
 
         # Reset environment if the run is skipped
         input_controller.update()

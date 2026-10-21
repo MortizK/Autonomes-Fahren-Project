@@ -5,10 +5,10 @@ class LaneDetection:
     debug_image: np.ndarray
     road_mask: np.ndarray
 
-    def __init__(self, green_tolerance: int = 30):
+    def __init__(self, color_tolerance: int = 30):
         self.debug_image = np.zeros((98, 98, 3), dtype=np.uint8)
         self.road_mask = np.zeros((84, 98), dtype=np.uint8)
-        self.green_tolerance = green_tolerance
+        self.color_tolerance = color_tolerance
 
     def _create_road_mask(self, frame: np.ndarray) -> np.ndarray:
         """Return 255 for road pixels and 0 for green pixels."""
@@ -16,10 +16,9 @@ class LaneDetection:
         green = frame[..., 1].astype(np.int16)
         blue = frame[..., 2].astype(np.int16)
 
-        is_green = (green > red + self.green_tolerance) & (
-            green > blue + self.green_tolerance
-        )
-        return np.where(is_green, 0, 255).astype(np.uint8)
+        is_road = (green > 120) | (red > 120) | (blue > 120)
+
+        return np.where(is_road, 0, 255).astype(np.uint8)
 
     def detect(self, observation: np.ndarray) -> tuple[list, list]:
         """
