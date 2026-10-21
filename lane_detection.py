@@ -18,7 +18,24 @@ class LaneDetection:
 
         is_road = (green > 120) | (red > 120) | (blue > 120)
 
-        return np.where(is_road, 0, 255).astype(np.uint8)
+        return is_road.astype(np.uint8) * 255
+
+    def _detect_edges(self, road_mask: np.ndarray) -> np.ndarray:
+        """Detect edges in the road mask."""
+        self.road_mask = road_mask
+        kernel_x = np.array([-1, 2, -1], dtype=np.int8)
+        edges_x = np.convolve(self.road_mask.flatten(), kernel_x, mode='same').reshape(self.road_mask.shape)
+
+        road_mask_rotated = np.rot90(self.road_mask, k=1)
+        kernel_y = np.array([-1, 2, -1], dtype=np.int8).reshape(-1, 1)
+        edges_y = np.convolve(road_mask_rotated.flatten(), kernel_y.flatten(), mode='same').reshape(road_mask_rotated.shape)
+        edges_y = np.rot90(edges_y, k=-1)
+
+        # Remove the Edges at the borders to avoid false positives
+        edges_x = edges_x[1:-1, 1:-1]
+        edges_y = edges_y[1:-1, 1:-1]
+
+        return edges_x + edges_y
 
     def detect(self, observation: np.ndarray) -> tuple[list, list]:
         """
@@ -37,14 +54,14 @@ class LaneDetection:
         # Ausschneiden der unteren 14 Pixel, da dort keine Fahrspuren sind
         self.debug_image = self.debug_image[0:84, 0:98]
         # Maskierung des Autos
-        self.debug_image[66:77, 45:51] = [100, 100, 100]  # Schwarze Maske
+        self.debug_image[66:77, 45:51] = [100, 100, 100]
 
-        # Alles, was nicht grün ist, wird als Straße markiert.
         self.road_mask = self._create_road_mask(self.debug_image)
         self.debug_image = self.road_mask
 
         # Phase 2: Lane Detection
-        
+        self.edge_mask = self._detect_edges(self.road_mask)
+        self.debug_image = self.edge_mask
 
         # Phase 3: Zuordnung zu den Fahrspuren
 
