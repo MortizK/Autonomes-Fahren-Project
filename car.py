@@ -30,7 +30,7 @@ class Car:
         left_lane_boundaries, right_lane_boundaries = self._lane_detection.detect(
             observation
         )
-        # Die Krümmung bestimmt die Längsregelung selbst aus der Trajektorie
+        # Curvature is computed by the longitudinal control
         trajectory, _ = self._path_planning.plan(
             left_lane_boundaries, right_lane_boundaries
         )

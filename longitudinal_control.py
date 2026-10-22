@@ -2,22 +2,18 @@ import numpy as np
 
 import geometry as geo
 
-# Gemessene Kennwerte des Autos auf Asphalt in Einheiten/s^2
-GAS_ACCEL = 44.0  # Beschleunigung bei Vollgas, die Hinterräder drehen dabei schon durch
-BRAKE_ACCEL = 300.0  # Verzögerung pro Bremswert, linear bis ca. 0.7
-GRIP_ACCEL = 219.0  # Haftgrenze der Reifen (Verzögerung mit blockierten Rädern)
+# Measured on asphalt [units/s^2]
+GAS_ACCEL = 44.0  # full gas
+BRAKE_ACCEL = 300.0  # per brake value, linear up to ~0.7
+GRIP_ACCEL = 219.0  # tire friction limit
 
 
 class LongitudinalControl:
     """
-    Längsregelung in zwei Schritten:
+    Target speed from curvature and braking distance, tracked by a PID controller.
 
-    1. Zielgeschwindigkeit aus der Krümmung des Pfads. Jede Kurve begrenzt das Tempo über
-       die erlaubte Querbeschleunigung, v = sqrt(a_quer / kappa). Weiter entfernte Kurven
-       erlauben mehr, solange bis dorthin noch abgebremst werden kann,
-       v = sqrt(v_kurve^2 + 2 * a_brems * s).
-    2. PID-Regler, der aus dem Geschwindigkeitsfehler eine Soll-Beschleunigung macht. Über
-       die gemessenen Kennwerte wird daraus Gas oder Bremse.
+    Corner speed v = sqrt(a_lat / kappa), a corner at distance s allows sqrt(v^2 + 2 * a_brake * s).
+    The PID output is a desired acceleration, mapped to gas or brake.
     """
 
     def __init__(
@@ -32,27 +28,21 @@ class LongitudinalControl:
         curvature_window: int = 8,
         max_brake: float = 0.7,
     ):
-        # PID, Ausgang ist eine Soll-Beschleunigung
-        self.kp = kp  # 1/s
-        self.ki = ki  # 1/s^2
-        self.kd = kd  # dimensionslos, wirkt auf die gemessene Beschleunigung
+        self.kp = kp  # [1/s]
+        self.ki = ki  # [1/s^2]
+        self.kd = kd  # on the measured acceleration
 
-        # Zielgeschwindigkeit
         self.max_speed = max_speed
         self.min_speed = min_speed
-        # Bezogen auf die Mittellinie. Liegt über der Haftgrenze, weil das Auto kurze Kurven etwas schneidet.
-        self.lateral_accel = lateral_accel
-        self.brake_accel = brake_accel  # eingeplante Verzögerung vor Kurven, mit Reserve zum Maximum
-        # Punkte links und rechts für die Krümmung. Kurze Kurven wirken damit flacher als lange.
-        self.curvature_window = curvature_window
-
-        # Ab 0.9 blockieren die Räder, ab ca. 0.7 ist die Haftung ausgereizt
-        self.max_brake = max_brake
+        self.lateral_accel = lateral_accel  # on the centerline, above the grip limit since curves are cut
+        self.brake_accel = brake_accel  # planned deceleration before curves
+        self.curvature_window = curvature_window  # points per side, short curves look flatter
+        self.max_brake = max_brake  # wheels lock above ~0.7
 
         self.reset()
 
     def reset(self) -> None:
-        """Setzt den Reglerzustand zurück, z. B. bei einer neuen Episode."""
+        """Resets the controller state."""
         self._frame = 0
         self._target_speed = self.min_speed
         self._integral = 0.0
@@ -71,26 +61,25 @@ class LongitudinalControl:
         zoom = geo.camera_zoom(self._frame)
         self._frame += 1
 
-        # Beim Einzoomen am Start ist ein Pixel noch zu grob, solange wird der Pfad ignoriert
+        # Path ignored while zooming in (pixels too coarse)
         path = None
         if len(trajectory) >= 2 and zoom >= geo.ZOOM / 2:
             path = geo.path_ahead(geo.to_vehicle_frame(trajectory, zoom), np.zeros(2))
 
-        # Ohne Pfad so abbremsen, wie es vor einer Kurve eingeplant ist
+        # No path: slow down with the planned deceleration
         if path is None or len(path) <= 2 * self.curvature_window:
             self._target_speed = max(self._target_speed - self.brake_accel * geo.DT, self.min_speed)
             return self._target_speed
 
-        # Kurvengeschwindigkeit an jedem Pfadpunkt
+        # Corner speed at every path point
         curvature = np.abs(geo.curvature(path, self.curvature_window))
         corner_speed = np.sqrt(self.lateral_accel / np.maximum(curvature, 1e-6))
 
-        # Geschwindigkeit, von der aus bis zu diesem Punkt noch auf die Kurvengeschwindigkeit gebremst werden kann.
-        # Die Krümmung direkt am Auto fehlt (Fenster), daher gilt der erste Wert schon ab dem Auto.
+        # Speed that still allows braking down to each corner speed (first value counts from the car)
         distance = np.arange(curvature.size) * geo.PATH_SPACING
         reachable = np.sqrt(corner_speed**2 + 2 * self.brake_accel * distance)
 
-        # Hinter dem Sichtbereich kann eine enge Kurve kommen, bis zum Pfadende muss man auf min_speed kommen
+        # A sharp turn may follow right after the visible path
         horizon = np.sqrt(self.min_speed**2 + 2 * self.brake_accel * (len(path) - 1) * geo.PATH_SPACING)
 
         self._target_speed = float(np.clip(min(reachable.min(), horizon), self.min_speed, self.max_speed))
@@ -111,8 +100,7 @@ class LongitudinalControl:
         """
         error = target_speed - current_speed
 
-        # D-Anteil auf die gemessene Beschleunigung statt auf den Fehler,
-        # damit Sprünge der Zielgeschwindigkeit keinen Stoß erzeugen
+        # D-term on the measurement, no kick when the target jumps
         if self._last_speed is None:
             self._last_speed = current_speed
         accel = (current_speed - self._last_speed) / geo.DT
@@ -120,18 +108,16 @@ class LongitudinalControl:
 
         demand = self.kp * error + self.ki * self._integral - self.kd * accel
 
-        # Anti-Windup: nur integrieren, solange der Ausgang nicht in der Begrenzung steckt
-        # oder der Fehler wieder aus ihr herausführt
+        # Anti-windup: integrate only while not saturated
         saturated = demand > GAS_ACCEL or demand < -self.max_brake * BRAKE_ACCEL
         if not saturated or np.sign(error) != np.sign(demand):
             self._integral += error * geo.DT
 
-        # Kammscher Kreis: Querbeschleunigung aus Lenkwinkel und Tempo (Einspurmodell),
-        # nur die restliche Haftung darf für Gas genutzt werden. Sonst brechen die Hinterräder aus.
+        # Friction circle: gas only gets the grip left by the lateral acceleration
         lateral = current_speed**2 * np.tan(min(abs(steering_angle), geo.MAX_STEER)) / geo.WHEELBASE
         grip = np.sqrt(max(1.0 - (lateral / GRIP_ACCEL) ** 2, 0.0))
 
-        # Bremsen bleibt auch in der Kurve erlaubt, zu schnell in der Kurve ist schlimmer
+        # Braking stays allowed in curves
         if demand >= 0.0:
             throttle = min(demand / GAS_ACCEL, grip)
             brake = 0.0
