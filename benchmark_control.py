@@ -99,6 +99,7 @@ def run_episode(seed: int, mode: str = "gt", max_steps: int = 1000, lateral: dic
     errors = np.asarray(errors[50:])  # Einzoomen am Anfang verzerrt die Ground Truth
     return {
         "seed": seed,
+        "mode": mode,
         "score": score,
         "steps": step + 1,
         "finished": bool(unwrapped.new_lap or unwrapped.tile_visited_count == len(unwrapped.track)),
@@ -139,9 +140,9 @@ def summarize(results: list[dict]) -> None:
     print("---------------------------")
     print(" Laufzeit pro Schritt in ms:   p50     p95     p99     max")
     for name in TIMED:
+        if results[0]["mode"] == "gt" and name in ("lane_detection", "path_planning"):
+            continue  # laufen im GT-Modus nicht
         values = np.concatenate([r["timings"][name] for r in results])
-        if values.max() < 1e-3:
-            continue  # im GT-Modus laufen Spurerkennung und Pfadplanung nicht
         p50, p95, p99 = np.percentile(values, [50, 95, 99])
         print(f" {name:<26}{p50:8.3f}{p95:8.3f}{p99:8.3f}{values.max():8.3f}")
     print(f" Budget bei 50 FPS: {1000 * geo.DT:.0f} ms")
