@@ -205,3 +205,39 @@ speed, slip ratios and slip angles are numerically unstable.
   errors, integral terms, target-speed history, and recovery state.
 - Evaluation should record seed, lap completion, total reward, distance
   completed, average speed, maximum slip, off-road time, and termination reason.
+
+## Camera Geometry
+
+- The 1000x800 window is scaled down to 96x96, so the image is stretched
+  differently: 1.56 px per unit across and 1.94 px per unit along the car
+  after the zoom. Angles and curvatures measured directly in pixels are
+  distorted, the controllers convert to units first (`geometry.py`).
+- The car origin is at pixel (48, 72), the front axle 1.6 units ahead and the
+  rear axle 1.64 units behind (wheelbase 3.24).
+- The camera zooms from 0.6 to 16.2 during the first second. The observation
+  after `reset` is already rendered at t = 0.02 s, full zoom is reached at
+  frame 49. Paths from the first frames have the wrong scale.
+
+## Measured Car Limits
+
+Measured on asphalt with short test runs (full gas, or constant brake from
+70 units/s):
+
+| Quantity | Value | Note |
+| -------- | ----- | ---- |
+| Acceleration at full gas | ~44 units/s^2 | rear wheels spin, less above ~60 units/s |
+| Deceleration per brake value | ~300 * brake units/s^2 | linear up to ~0.7 |
+| Deceleration with locked wheels | 219 units/s^2 | brake >= 0.9, no steering |
+| Tire friction limit | 4 * 400 / 7.3 = 219 units/s^2 | same limit for cornering |
+
+- The steering action is the target wheel angle in rad (with the sign
+  flipped by the env). The joint stops at +/-0.4 rad, so `0.2` means 0.2 rad
+  and not 50 % of the steering lock.
+- Each wheel has a moment of inertia of 1.6, i.e. an effective mass of
+  `I / r^2 = 5.5` per wheel. The free rolling front wheels therefore brake the
+  car while accelerating, that is why full gas only gives 44 instead of
+  110 units/s^2.
+- Brake values above ~0.72 decelerate the wheel faster than the car and lock
+  it after some steps, even below 0.9.
+- Full gas in a curve saturates the rear tires and the car spins. Gas has to
+  be reduced by the lateral acceleration (friction circle).
