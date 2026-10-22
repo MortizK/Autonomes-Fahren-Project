@@ -75,7 +75,7 @@ class LongitudinalControl:
         curvature = np.abs(geo.curvature(path, self.curvature_window))
         corner_speed = np.sqrt(self.lateral_accel / np.maximum(curvature, 1e-6))
 
-        # Speed that still allows braking down to each corner speed (first value counts from the car)
+        # Max speed that can still brake to each corner speed
         distance = np.arange(curvature.size) * geo.PATH_SPACING
         reachable = np.sqrt(corner_speed**2 + 2 * self.brake_accel * distance)
 
@@ -113,7 +113,7 @@ class LongitudinalControl:
         if not saturated or np.sign(error) != np.sign(demand):
             self._integral += error * geo.DT
 
-        # Friction circle: gas only gets the grip left by the lateral acceleration
+        # Friction circle: gas gets only the grip left after cornering
         lateral = current_speed**2 * np.tan(min(abs(steering_angle), geo.MAX_STEER)) / geo.WHEELBASE
         grip = np.sqrt(max(1.0 - (lateral / GRIP_ACCEL) ** 2, 0.0))
 

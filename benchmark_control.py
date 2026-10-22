@@ -44,7 +44,7 @@ def _cross_track_error(trajectory: np.ndarray) -> float:
 
 
 def run_episode(seed: int, mode: str = "gt", max_steps: int = 1000, lateral: dict = None, longitudinal: dict = None) -> dict:
-    """Runs one episode and returns score, lap, driving metrics and module runtimes in ms."""
+    """Runs one episode, returns metrics and module runtimes in ms."""
     env = _get_env()
     state_image, info = env.reset(seed=seed)
     lateral_control = LateralControl(**(lateral or {}))
