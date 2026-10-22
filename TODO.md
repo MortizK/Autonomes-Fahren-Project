@@ -9,10 +9,11 @@
 - [x] Transform Edge Detection into two lanes
 - [ ] Edge Cases for Car not on Track
 - [ ] Edge Cases for multiple Starting Points
-- [ ] Performance Analysis (Real Time?, how many ms?)
+- [x] Performance Analysis (Real Time?, how many ms?)
 
 ## Path Planning
 
+- [x] Implement a really simple centerline
 - [ ] Find out the characteristics of the car
 - [ ] Find a Path that minimizes a function (time)
 - [ ] Discuss if we are allowed to use the first frame global view

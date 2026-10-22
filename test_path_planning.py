@@ -6,18 +6,22 @@ import numpy as np
 from env_wrapper import CarRacingEnvWrapper
 from input_controller import InputController
 from path_planning import PathPlanning
+from lane_detection import LaneDetection
 
 
 def run(env, input_controller: InputController):
     path_planning = PathPlanning()
+    lane_detection = LaneDetection()
 
     seed = int(np.random.randint(0, int(1e6)))
+    seed = 197453   # Seed with S-Curves and U-Turns
     state_image, info = env.reset(seed=seed)
     total_reward = 0.0
 
     while not input_controller.quit:
+        left_lane_boundaries, right_lane_boundaries = lane_detection.detect(state_image)
         way_points, curvature = path_planning.plan(
-            info["left_lane_boundary"], info["right_lane_boundary"]
+            left_lane_boundaries, right_lane_boundaries
         )
 
         cv_image = np.asarray(state_image, dtype=np.uint8)
@@ -25,15 +29,19 @@ def run(env, input_controller: InputController):
         for point in way_points:
             if 0 < point[0] < 96 and 0 < point[1] < 84:
                 cv_image[int(point[1]), int(point[0])] = [255, 255, 255]
-        for point in info["left_lane_boundary"]:
+        for point in left_lane_boundaries:
             if 0 < point[0] < 96 and 0 < point[1] < 84:
                 cv_image[int(point[1]), int(point[0])] = [255, 0, 0]
-        for point in info["right_lane_boundary"]:
+        for point in right_lane_boundaries:
             if 0 < point[0] < 96 and 0 < point[1] < 84:
                 cv_image[int(point[1]), int(point[0])] = [0, 0, 255]
 
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
-        cv_image = cv2.resize(cv_image, (cv_image.shape[1] * 6, cv_image.shape[0] * 6))
+        cv_image = cv2.resize(
+            cv_image,
+            np.asarray(state_image.shape[:2]) * 6,
+            interpolation=cv2.INTER_NEAREST,
+        )
         cv2.imshow("Car Racing - Path Planning", cv_image)
         cv2.waitKey(1)
 
