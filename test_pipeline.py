@@ -30,11 +30,11 @@ def run(env, input_controller: InputController):
 
     while not input_controller.quit:
         left_lane_boundaries, right_lane_boundaries = lane_detection.detect(state_image)
-        trajectory, curvature = path_planning.plan(
+        trajectory, _ = path_planning.plan(
             left_lane_boundaries, right_lane_boundaries
         )
         steering_angle = lateral_control.control(trajectory, info["speed"])
-        target_speed = longitudinal_control.predict_target_speed(curvature)
+        target_speed = longitudinal_control.predict_target_speed(trajectory)
         acceleration, braking = longitudinal_control.control(
             info["speed"], target_speed, steering_angle
         )
@@ -75,6 +75,8 @@ def run(env, input_controller: InputController):
             seed = int(np.random.randint(0, int(1e6)))
             state_image, info = env.reset(seed=seed)
             total_reward = 0.0
+            lateral_control.reset()
+            longitudinal_control.reset()
 
             speed_history = []
             target_speed_history = []

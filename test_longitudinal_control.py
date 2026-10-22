@@ -23,9 +23,7 @@ def run(env, input_controller: InputController):
     target_speed_history = []
 
     while not input_controller.quit:
-        target_speed = longitudinal_control.predict_target_speed(
-            info["trajectory"], info["speed"], input_controller.steer
-        )
+        target_speed = longitudinal_control.predict_target_speed(info["trajectory"])
         acceleration, braking = longitudinal_control.control(
             info["speed"], target_speed, input_controller.steer
         )
@@ -57,6 +55,7 @@ def run(env, input_controller: InputController):
             seed = int(np.random.randint(0, int(1e6)))
             state_image, info = env.reset(seed=seed)
             total_reward = 0.0
+            longitudinal_control.reset()
 
             speed_history = []
             target_speed_history = []
