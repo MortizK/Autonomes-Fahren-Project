@@ -12,17 +12,17 @@ from main import draw_debug_overlay
 
 
 def run(env, input_controller: InputController, display_debug=True):
-    # Initialization time of the lane detection algorithm
+    seed = int(np.random.randint(0, int(1e6)))
+    # seed = 197453   # Seed with S-Curves and U-Turns
+    print(f"seed: {seed:06d}")
+    state_image, info = env.reset(seed=seed)
+    total_reward = 0.0
     
+    # Initialization time of the lane detection algorithm
     start_time = time.time()
     lane_detection = LaneDetection()
     end_time = time.time()
     detection_times = []
-
-    seed = int(np.random.randint(0, int(1e6)))
-    seed = 197453   # Seed with S-Curves and U-Turns
-    state_image, info = env.reset(seed=seed)
-    total_reward = 0.0
 
     while not input_controller.quit:
         start_time = time.time()
@@ -67,6 +67,7 @@ def run(env, input_controller: InputController, display_debug=True):
                 cv2.imwrite(f"./data/firstFrames/first_frame_road_mask_{seed}.png", lane_detection.first_image_road_mask)
 
             input_controller.skip = False
+            lane_detection = LaneDetection()
             seed = int(np.random.randint(0, int(1e6)))
             state_image, info = env.reset(seed=seed)
             total_reward = 0.0
