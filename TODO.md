@@ -33,7 +33,7 @@
 - [x] Edge cases: no or too few trajectory points, standstill, gaps in the trajectory
 - [x] Edge case: camera zoom during the first second
 - [x] Tune the parameters (`benchmark_control.py`, `test_lateral_control.py`)
-- [x] Optional: Pure Pursuit as alternative (selectable via parameter) and compare both
+- [x] Optional: Pure Pursuit as alternative and compare both (Stanley more robust, Pure Pursuit removed again)
 - [ ] Check the test with `--domain_randomize` once the lane detection supports it
 - [x] Performance Analysis (Real Time?, how many ms?)
 
@@ -51,6 +51,10 @@
 - [x] Tune the parameters
 - [ ] Use the curvature from `PathPlanning` once it plans a racing line
 - [x] Performance Analysis (Real Time?, how many ms?)
+
+## Before Submission
+
+- [ ] Remove `benchmark_control.py`, it is only for testing and tuning the controllers (also remove it from the README: file structure and section 9)
 
 ## Pipeline
 
