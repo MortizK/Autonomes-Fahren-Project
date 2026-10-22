@@ -205,6 +205,120 @@ class LaneDetection:
             remaining_points = np.delete(remaining_points, np.flatnonzero(remove_mask), axis=0)
         return walk_points, False
 
+    def draw_pace_notes(self, walk_points, pace_notes=None, arrow_every=4):
+        """
+        Draw a track from ordered pixel coordinates.
+
+        Blue arrows: left turn
+        Red arrows: right turn
+        Gray arrows: straight / low curvature
+
+        pace_notes: optional list of dicts, e.g.
+            [{"index": 15, "note": "L3", "distance": 20}]
+        """
+        points = np.asarray(walk_points, dtype=float)
+
+        if len(points) < 2:
+            raise ValueError("At least two track points are required.")
+
+        segments = np.diff(points, axis=0)
+        lengths = np.linalg.norm(segments, axis=1)
+        headings = np.unwrap(np.arctan2(-segments[:, 1], segments[:, 0]))
+
+        # Estimate smoothed curvature
+        window = 3
+        curvature = np.zeros(len(segments))
+
+        for i in range(len(segments)):
+            lo = max(0, i - window)
+            hi = min(len(segments) - 1, i + window)
+            distance = lengths[lo:hi + 1].sum()
+
+            if distance > 0:
+                curvature[i] = (headings[hi] - headings[lo]) / distance
+
+        threshold = np.deg2rad(1.5)
+        colors = np.where(
+            curvature > threshold, "tab:blue",
+            np.where(curvature < -threshold, "tab:red", "gray")
+        )
+
+        cumulative_distance = np.r_[0, np.cumsum(lengths)]
+
+        fig, ax = plt.subplots(figsize=(10, 8))
+
+        # Draw the track
+        ax.plot(points[:, 0], points[:, 1], "k-", lw=1.5, alpha=0.65)
+        ax.scatter(points[:, 0], points[:, 1], s=8, color="black")
+
+        # Draw direction vectors at regular intervals
+        for i in range(0, len(segments), arrow_every):
+            dx, dy = segments[i]
+
+            # Enlarge short vectors for visibility
+            norm = np.hypot(dx, dy)
+            if norm == 0:
+                continue
+
+            scale = 2.0 / norm
+
+            ax.quiver(
+                points[i, 0], points[i, 1],
+                dx * scale, dy * scale,
+                angles="xy",
+                scale_units="xy",
+                scale=1,
+                color=colors[i],
+                width=0.006,
+                headwidth=5,
+                zorder=3
+            )
+
+        # Add generated pace-note labels at their segment indices
+        if pace_notes:
+            for item in pace_notes:
+                i = int(item["index"])
+                if not 0 <= i < len(points):
+                    continue
+
+                label = item["note"]
+                distance = item.get("distance", cumulative_distance[i])
+
+                ax.annotate(
+                    f'{label}\n{distance:.0f}px',
+                    xy=points[i],
+                    xytext=(8, 8),
+                    textcoords="offset points",
+                    fontsize=9,
+                    bbox=dict(boxstyle="round,pad=0.25",
+                            fc="white", alpha=0.85),
+                    arrowprops=dict(arrowstyle="-", lw=0.7)
+                )
+
+        # Start and finish
+        ax.scatter(*points[0], marker="s", s=100,
+                color="green", label="Start", zorder=5)
+        ax.scatter(*points[-1], marker="X", s=100,
+                color="purple", label="Finish", zorder=5)
+
+        from matplotlib.lines import Line2D
+        legend = [
+            Line2D([0], [0], color="tab:blue", lw=2, label="Left"),
+            Line2D([0], [0], color="tab:red", lw=2, label="Right"),
+            Line2D([0], [0], color="gray", lw=2, label="Straight"),
+        ]
+        ax.legend(handles=legend + ax.get_legend_handles_labels()[0][:0]
+                if False else legend, loc="best")
+
+        ax.set_title("Track Layout and Pace-Note Vectors")
+        ax.set_xlabel("X (pixels)")
+        ax.set_ylabel("Y (pixels)")
+        ax.invert_yaxis()  # Pixel coordinate convention
+        ax.set_aspect("equal", adjustable="box")
+        ax.grid(True, alpha=0.25)
+        plt.tight_layout()
+        plt.show()
+
     def _create_pace_notes(self, road_mask: np.ndarray) -> str:
             """
             Create pace notes based on the road mask.
@@ -233,12 +347,14 @@ class LaneDetection:
             for i in range(len(walk_points) - 1):
                 x1, y1 = walk_points[i]
                 self.ordered_points[int(x1), int(y1)] = 50 + i
-            # print(self.ordered_points)
+            # print(walk_points)
     
-            # Phase N - Create the Pace Notes from the points
-            pace_notes = ["MC1"] # Start with a default pace note
-    
-            pace_notes.append("MC2BC") # End with a default pace note
+            # Phase 2 - Create the Pace Notes from the points
+            pace_notes = ["MC1"]
+
+            self.draw_pace_notes(walk_points)
+
+            pace_notes.append("MC2BC")
             return " ".join(pace_notes)
 
     def detect(self, observation: np.ndarray) -> tuple[list, list]:
@@ -298,9 +414,9 @@ class LaneDetection:
             self.overlay_image[right_start[1] + 1, right_start[0] + 1] = [255, 255, 255]
         # Runtime: until here p95 14ms
 
-        # self.debug_image = self.overlay_image
+        self.debug_image = self.overlay_image
         # self.debug_image = self.first_image
-        self.debug_image = self.ordered_points
+        # self.debug_image = self.ordered_points
 
         # (Phase 4: Funktionsanpassung, Mathematische Darstellung der Fahrspuren)
 
