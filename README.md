@@ -67,7 +67,7 @@ Beide Regler rechnen nicht in Pixeln, sondern in Einheiten der Simulation, in ei
 
 ## 7. Querregelung (`lateral_control.py`)
 
-Standard ist der **Stanley-Regler** an der Vorderachse:
+Die Querregelung nutzt den **Stanley-Regler** an der Vorderachse:
 
 ```
 delta = psi + arctan(k * e / (k_soft + v)) + k_d * dpsi/dt
@@ -75,13 +75,10 @@ delta = psi + arctan(k * e / (k_soft + v)) + k_d * dpsi/dt
 
 | Parameter | Standard | Bedeutung |
 | --------- | -------- | --------- |
-| `method` | `"stanley"` | `"stanley"` oder `"pure_pursuit"` |
 | `gain` | 1.0 | k, Gewicht der Querabweichung e (1/s) |
 | `softening` | 1.0 | k_soft, begrenzt die Verstärkung beim Anfahren (Einheiten/s) |
 | `damping` | 0.02 | k_d, D-Anteil auf den Kurswinkelfehler psi (s) |
 | `preview` | 12.0 | Sehnenlänge, über die psi gemessen wird (Einheiten) |
-| `lookahead_gain` | 0.25 | Pure Pursuit: Vorausschau pro Geschwindigkeit (s) |
-| `lookahead_min` | 6.0 | Pure Pursuit: minimale Vorausschau (Einheiten) |
 
 Erweiterungen gegenüber dem Standard-Stanley:
 
@@ -90,7 +87,7 @@ Erweiterungen gegenüber dem Standard-Stanley:
 - **Ausgabe in rad**: Die Lenkaktion ist in der Simulation der Soll-Radwinkel in rad (Anschlag ±0,4 rad). Der Regler gibt ihn deshalb direkt aus.
 - **Pfadaussetzer**: Ohne Pfad klingt der letzte Lenkwinkel pro Frame mit Faktor 0,9 ab. Kurze Aussetzer werden überbrückt, ohne dass das Auto dauerhaft eingelenkt bleibt.
 
-Pure Pursuit legt von der Hinterachse einen Kreisbogen durch den Pfadpunkt im Abstand `l_d = max(0.25 * v, 6)`. Aktivieren über `LateralControl(method="pure_pursuit")`, z. B. in `car.py`.
+Als Alternative wurde Pure Pursuit umgesetzt und verglichen (Kreisbogen von der Hinterachse durch den Pfadpunkt im Abstand `l_d = max(0.25 * v, 6)`). Stanley war robuster (Abschnitt 9), Pure Pursuit ist deshalb nicht mehr im Code. Der Stand mit beiden Reglern liegt im Commit `5e750cd`.
 
 ## 8. Längsregelung (`longitudinal_control.py`)
 
@@ -127,7 +124,6 @@ Das Krümmungsfenster von ±8 Einheiten lässt kurze Kurven flacher wirken als l
 ```bash
 python benchmark_control.py --mode pipeline --episodes 50   # komplette Pipeline
 python benchmark_control.py --mode gt --episodes 50         # Regler auf der Ground-Truth-Mittellinie
-python benchmark_control.py --mode pipeline --lateral pure_pursuit
 ```
 
 Abgestimmt wurde auf den Seeds 0-23, bewertet auf den Seeds 1000-1049, die beim Abstimmen nicht verwendet wurden.
@@ -140,7 +136,7 @@ Spurerkennung und Pfadplanung (einfache Mittellinie) sind in allen Zeilen gleich
 | -------- | ------: | --: | --: | -----: | -------------: | ------: |
 | **Final**: Stanley (Sehne 12, Dämpfung), Zielgeschwindigkeit aus Krümmung | **925,9** | 7,5 | 904,0 | 50/50 | 741 | 0 |
 | Stanley ohne Dämpfung | 925,7 | 7,6 | 903,5 | 50/50 | 743 | 0 |
-| Pure Pursuit (`lookahead_gain` 0,25) | 922,6 | 36,6 | 671,4 | 49/50 | 722 | 489 |
+| Pure Pursuit (`lookahead_gain` 0,25, wieder entfernt) | 922,6 | 36,6 | 671,4 | 49/50 | 722 | 489 |
 | Klassischer Stanley (Tangente, ohne Dämpfung) | 480,9 | 276,2 | -42,5 | 0/50 | - | 14349 |
 | Erste Version (klassischer Stanley, `lateral_accel` 150, Fenster 4) | 902,7 | 28,5 | 743,7 | 43/50 | 882 | 0 |
 | Konstante Zielgeschwindigkeit 50 | 865,8 | 49,1 | 697,8 | 18/50 | 949 | 0 |
@@ -151,7 +147,7 @@ Einordnung:
 
 - **Pipeline vs. Ground Truth**: Auf den Abstimm-Seeds erreichen die Regler mit der echten Pipeline 925,0 und auf der Ground-Truth-Mittellinie 925,5. Die Regler kommen also mit dem Pixelrauschen der Spurerkennung zurecht.
 - **Sehne statt Tangente** ist der wichtigste Baustein. Die Tangente aus pixelgenauen Punkten rauscht so stark, dass der klassische Stanley mit derselben Längsregelung keine Runde schafft.
-- **Pure Pursuit** fährt die Runden schneller (722 statt 741 Schritte), schneidet aber stärker und ist einmal von der Strecke abgekommen. Stanley bleibt deshalb Standard.
+- **Pure Pursuit** fährt die Runden schneller (722 statt 741 Schritte), schneidet aber stärker und ist einmal von der Strecke abgekommen (Minimum 671 statt 904). Bei zu kurzer Vorausschau (`lookahead_gain` 0,15) schaukelt es sich auf und verlässt die Strecke. Stanley ist robuster und bleibt deshalb als einziger Regler im Code.
 - **Dämpfung**: Auf den Abstimm-Seeds +0,6 Punkte und maximale Querabweichung 5,9 statt 7,5 Einheiten, auf den Test-Seeds kein messbarer Unterschied. Sie bleibt drin, weil sie nicht schadet.
 - **Kammscher Kreis**: Ohne die Gasbegrenzung beim Lenken nur Ø 80 Punkte (Abstimm-Seeds), die Hinterräder brechen in fast jeder Kurve aus.
 - **Grenzen**: In rund 68 % der Schritte ist die Zielgeschwindigkeit das Höchsttempo, das Auto liegt dort im Mittel aber noch rund 20 Einheiten/s darunter. Der Motor ist der Engpass. Mehr Score bringt vor allem eine Ideallinie aus der Pfadplanung, die Kurvenradien vergrößert. Mit `--domain_randomize` ist die Pipeline noch nicht getestet.

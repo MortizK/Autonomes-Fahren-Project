@@ -7,7 +7,6 @@ Läuft ohne Fenster und parallel. Zwei Modi:
 
 Beispiel:
     python benchmark_control.py --mode pipeline --episodes 50
-    python benchmark_control.py --mode gt --lateral pure_pursuit
 
 Die Seeds sind fortlaufend und damit reproduzierbar. Abgestimmt wurde auf 0-23,
 bewertet auf 1000-1049 (Standard).
@@ -152,7 +151,6 @@ def summarize(results: list[dict]) -> None:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("gt", "pipeline"), default="gt")
-    parser.add_argument("--lateral", choices=("stanley", "pure_pursuit"), default="stanley")
     parser.add_argument("--episodes", type=int, default=50)
     parser.add_argument("--seed", type=int, default=1000, help="erster Seed, danach fortlaufend")
     parser.add_argument("--steps", type=int, default=1000)
@@ -160,8 +158,7 @@ def main():
     args = parser.parse_args()
 
     seeds = range(args.seed, args.seed + args.episodes)
-    results = evaluate(seeds, args.mode, args.steps, {"method": args.lateral}, workers=args.workers)
-    summarize(results)
+    summarize(evaluate(seeds, args.mode, args.steps, workers=args.workers))
 
 
 if __name__ == "__main__":
