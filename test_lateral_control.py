@@ -43,6 +43,7 @@ def run(env, input_controller: InputController):
             seed = int(np.random.randint(0, int(1e6)))
             state_image, info = env.reset(seed=seed)
             total_reward = 0.0
+            lateral_control.reset()
 
 
 def main():
