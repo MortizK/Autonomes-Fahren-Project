@@ -16,9 +16,8 @@ DT = 1.0 / 50.0
 SCALE_X = 96 / 1000
 SCALE_Y = 96 / 800
 ZOOM = 2.7 * 6.0  # Zoom nach dem Einzoomen, dann 1.56 px pro Einheit quer und 1.94 längs
-ZOOM_FRAMES = 49  # ab diesem Frame ist voll eingezoomt
 
-# Fahrzeugursprung im Bild
+# Fahrzeugursprung im Bild: Fenstermitte, 3/4 der Fensterhöhe
 CAR_X_PX = 48.0
 CAR_Y_PX = 72.0
 
