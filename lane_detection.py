@@ -69,11 +69,70 @@ class LaneDetection:
         # Maskierung des Autos
         self.cut_image[int(geo.CAR_Y_PX-5):int(geo.CAR_Y_PX+5), int(geo.CAR_X_PX-2):int(geo.CAR_X_PX+2)] = [100, 100, 100]
 
-        self.road_mask = self._create_road_mask(self.cut_image)
-        self.debug_image = self.road_mask
+        self.road_mask = self._create_road_mask(self.cut_image) == 0
+        # self.debug_image = self.road_mask
+
+        p = np.pad(self.road_mask, 1, mode='constant')
+
+        neighbors = (
+                          p[:-2, 1:-1] |
+            p[1:-1, :-2]               | p[1:-1, 2:] |
+                          p[2:, 1:-1]
+        )
+
+        self.road_mask = (self.road_mask & neighbors).astype(np.uint8) * 255
+        # self.debug_image = self.road_mask
 
         # Phase 2: Lane Detection
         self.edge_mask = self._detect_edges(self.road_mask)
         # self.debug_image = self.edge_mask
+
+        self.debug_image = observation.copy()
+        for (y, x) in np.argwhere(self.edge_mask > 0):
+            self.debug_image[y + 1, x + 1] = [255, 0, 0]
+
+        # Phase 3: A* Path Planning - Find Start and Endpoints
+        start_point = np.array([geo.CAR_Y_PX, geo.CAR_X_PX], dtype=np.int8)
+
+        # Find all points on the border of the image (top, left, right)
+        border_points = np.argwhere(self.edge_mask > 0)
+        border_points = border_points[
+            (border_points[:, 1] == 0) |                            # left border
+            (border_points[:, 0] == 0) |                            # top border
+            (border_points[:, 1] == self.edge_mask.shape[1] - 1)    # right border
+        ]
+        # Add points on the border of the image, which are part of the road mask
+        for y in [0, self.edge_mask.shape[0] - 1]:
+            for x in [0, self.edge_mask.shape[1] - 1]:
+                if self.road_mask[y, x] > 0:
+                    border_points = np.vstack((border_points, [y, x]))
+        
+        for y, x in border_points:
+            self.debug_image[y + 1, x + 1] = [0, 255, 0]
+
+        # Find Pairs of border points
+        # Points which are direct neighbors are considered as one point
+        clustered_border_points = []
+        for i, (y, x) in enumerate(border_points):
+            if i == 0:
+                clustered_border_points.append((y, x))
+                continue
+
+            prev_y, prev_x = border_points[i - 1]
+            if abs(y - prev_y) > 1 or abs(x - prev_x) > 1:
+                clustered_border_points.append((y, x))
+        print(f"Clustered: {len(clustered_border_points)}, Original: {len(border_points)}")
+
+        mid_points = []
+        for i in range(len(clustered_border_points)):
+            y1, x1 = clustered_border_points[i]
+            y2, x2 = clustered_border_points[(i + 1) % len(clustered_border_points)]
+            mid_y = (y1 + y2) // 2
+            mid_x = (x1 + x2) // 2
+            if self.road_mask[mid_y +1, mid_x + 1] == 255 and self.edge_mask[mid_y, mid_x] == 0:
+                mid_points.append((mid_y, mid_x))
+
+        for y, x in mid_points:
+            self.debug_image[y + 1, x + 1] = [0, 0, 255]
 
         return [], []

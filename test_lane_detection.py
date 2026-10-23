@@ -11,7 +11,7 @@ from lane_detection import LaneDetection
 
 def run(env, input_controller: InputController):
     seed = int(np.random.randint(0, int(1e6)))
-    # seed = 197453   # Seed with S-Curves and U-Turns
+    seed = 197453   # Seed with S-Curves and U-Turns
     print(f"seed: {seed:06d}")
     state_image, info = env.reset(seed=seed)
     total_reward = 0.0
