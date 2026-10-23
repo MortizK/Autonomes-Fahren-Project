@@ -5,14 +5,10 @@ import gymnasium as gym
 import numpy as np
 from env_wrapper import CarRacingEnvWrapper
 from input_controller import InputController
-from lane_detection import LaneDetection
-from path_planning import PathPlanning
 from lateral_control import LateralControl
 
 
 def run(env, input_controller: InputController):
-    lane_detection = LaneDetection()
-    path_planning = PathPlanning()
     lateral_control = LateralControl()
 
     seed = int(np.random.randint(0, int(1e6)))
@@ -20,10 +16,7 @@ def run(env, input_controller: InputController):
     total_reward = 0.0
 
     while not input_controller.quit:
-        left_boundary, right_boundary = lane_detection.detect(state_image)
-        trajectory, curvature = path_planning.plan(left_boundary, right_boundary)
-        steering_angle = lateral_control.control(trajectory, info["speed"])
-        # steering_angle = lateral_control.control(info["trajectory"], info["speed"])
+        steering_angle = lateral_control.control(info["trajectory"], info["speed"])
 
         cv_image = np.asarray(state_image, dtype=np.uint8)
         for point in info["trajectory"]:
@@ -31,11 +24,7 @@ def run(env, input_controller: InputController):
                 cv_image[int(point[1]), int(point[0])] = [255, 255, 255]
 
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
-        cv_image = cv2.resize(
-            cv_image,
-            np.asarray(state_image.shape[:2]) * 6,
-            interpolation=cv2.INTER_NEAREST,
-        )
+        cv_image = cv2.resize(cv_image, (cv_image.shape[1] * 6, cv_image.shape[0] * 6))
         cv2.imshow("Car Racing - Lateral Control", cv_image)
         cv2.waitKey(1)
 
