@@ -12,17 +12,17 @@ from main import draw_debug_overlay
 
 
 def run(env, input_controller: InputController, display_debug=True):
-    # Initialization time of the lane detection algorithm
+    seed = int(np.random.randint(0, int(1e6)))
+    # seed = 197453   # Seed with S-Curves and U-Turns
+    print(f"seed: {seed:06d}")
+    state_image, info = env.reset(seed=seed)
+    total_reward = 0.0
     
+    # Initialization time of the lane detection algorithm
     start_time = time.time()
     lane_detection = LaneDetection()
     end_time = time.time()
     detection_times = []
-
-    seed = int(np.random.randint(0, int(1e6)))
-    # seed = 197453   # Seed with S-Curves and U-Turns
-    state_image, info = env.reset(seed=seed)
-    total_reward = 0.0
 
     while not input_controller.quit:
         start_time = time.time()
@@ -50,6 +50,8 @@ def run(env, input_controller: InputController, display_debug=True):
         state_image, r, done, trunc, info = env.step(a)
         total_reward += r
 
+        # done = True     # Debug to Capture the first frame of each run
+
         if display_debug:
             draw_debug_overlay(env, state_image, info, a)
 
@@ -57,12 +59,15 @@ def run(env, input_controller: InputController, display_debug=True):
         input_controller.update()
         if done or input_controller.skip:
             print(f"seed: {seed:06d}     reward: {total_reward:06.2F}")
-
+    
             # save the first frame of the last run for debugging
             if lane_detection.first_image is not None:
                 cv2.imwrite(f"./data/firstFrames/first_frame_{seed}.png", lane_detection.first_image)
+            if lane_detection.first_image_road_mask is not None:
+                cv2.imwrite(f"./data/firstFrames/first_frame_road_mask_{seed}.png", lane_detection.first_image_road_mask)
 
             input_controller.skip = False
+            lane_detection = LaneDetection()
             seed = int(np.random.randint(0, int(1e6)))
             state_image, info = env.reset(seed=seed)
             total_reward = 0.0
