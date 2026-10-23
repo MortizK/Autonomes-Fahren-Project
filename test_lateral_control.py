@@ -24,7 +24,11 @@ def run(env, input_controller: InputController):
                 cv_image[int(point[1]), int(point[0])] = [255, 255, 255]
 
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
-        cv_image = cv2.resize(cv_image, (cv_image.shape[1] * 6, cv_image.shape[0] * 6))
+        cv_image = cv2.resize(
+            cv_image, 
+            (cv_image.shape[1] * 6, cv_image.shape[0] * 6), 
+            interpolation=cv2.INTER_NEAREST
+        )
         cv2.imshow("Car Racing - Lateral Control", cv_image)
         cv2.waitKey(1)
 

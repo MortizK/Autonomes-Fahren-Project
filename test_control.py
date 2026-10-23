@@ -1,0 +1,114 @@
+import argparse
+
+import cv2
+import gymnasium as gym
+import numpy as np
+from env_wrapper import CarRacingEnvWrapper
+from input_controller import InputController
+from lateral_control import LateralControl
+from longitudinal_control import LongitudinalControl
+from matplotlib import pyplot as plt
+
+fig = plt.figure()
+plt.ion()
+plt.show()
+
+max_time = 1000
+
+
+def run(env, input_controller: InputController):
+    lateral_control = LateralControl()
+    longitudinal_control = LongitudinalControl()
+
+    seeds = [373468, 693592, 197453, 180888]
+    seed_counter = 0
+    seed = seeds[seed_counter]
+    # seed = int(np.random.randint(0, int(1e6)))
+    state_image, info = env.reset(seed=seed)
+    total_reward = 0.0
+
+    speed_history = []
+    target_speed_history = []
+
+    t = 0
+    while not input_controller.quit:
+        # Longitudinal control
+        target_speed = longitudinal_control.predict_target_speed(info["trajectory"])
+        acceleration, braking = longitudinal_control.control(
+            info["speed"], target_speed, input_controller.steer
+        )
+
+        speed_history.append(info["speed"])
+        target_speed_history.append(target_speed)
+
+        # Longitudinal control plot
+        plt.gcf().clear()
+        plt.plot(speed_history, c="green")
+        plt.plot(target_speed_history)
+        try:
+            fig.canvas.flush_events()
+        except:
+            pass
+
+        # Lateral control
+        steering_angle = lateral_control.control(info["trajectory"], info["speed"])
+
+        cv_image = np.asarray(state_image, dtype=np.uint8)
+        for point in info["trajectory"]:
+            if 0 < point[0] < 96 and 0 < point[1] < 84:
+                cv_image[int(point[1]), int(point[0])] = [255, 255, 255]
+
+        cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
+        cv_image = cv2.resize(
+            cv_image, 
+            (cv_image.shape[1] * 6, cv_image.shape[0] * 6), 
+            interpolation=cv2.INTER_NEAREST
+        )
+        cv2.imshow("Car Racing - Lateral Control", cv_image)
+        cv2.waitKey(1)
+
+        # Step the environment
+        input_controller.update()
+        a = [steering_angle, acceleration, braking]
+        state_image, r, done, trunc, info = env.step(a)
+        total_reward += r
+        t += 1
+
+        # Reset environment if the run is skipped
+        input_controller.update()
+        if done or input_controller.skip or t >= max_time:
+            print(f"seed: {seed:06d}     reward: {total_reward:06.2F}")
+
+            input_controller.skip = False
+            seed_counter += 1
+            seed = int(np.random.randint(0, int(1e6)))
+            # TODO: Difficult seed for testing, remove when done
+            if seed_counter < len(seeds):
+                seed = seeds[seed_counter]
+            state_image, info = env.reset(seed=seed)
+            total_reward = 0.0
+            t = 0
+            lateral_control.reset()
+            longitudinal_control.reset()
+
+            speed_history = []
+            target_speed_history = []
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--no_display", action="store_true", default=False)
+    args = parser.parse_args()
+
+    render_mode = "rgb_array" if args.no_display else "human"
+    env = CarRacingEnvWrapper(
+        gym.make("CarRacing-v3", render_mode=render_mode, domain_randomize=False)
+    )
+    input_controller = InputController()
+
+    run(env, input_controller)
+    env.reset()
+
+
+if __name__ == "__main__":
+    main()
