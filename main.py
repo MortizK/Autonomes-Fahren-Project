@@ -78,11 +78,15 @@ def draw_debug_overlay(env, state_image: np.ndarray, info: dict, action=None) ->
 
 
 def evaluate(env, eval_runs=50, eval_length=600, display_debug=True):
+    seeds = [373468, 693592, 197453, 180888]
 
     episode_rewards = []
     for episode in range(eval_runs):
 
         seed = int(np.random.randint(0, int(1e6)))
+        # TODO: Difficult seed for testing, remove when done
+        if episode < len(seeds):
+            seed = seeds[episode]
         state_image, info = env.reset(seed=seed)
 
         car = Car()

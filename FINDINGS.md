@@ -160,7 +160,7 @@ the corner is safer than braking while already using most lateral grip.
 
 | Seed | Score | Notes |
 | ---- | ----- | ----- |
-| 197453 | - | S-Turn and some U-Turns |
+| 197453 | 910.50 | S-Turn and some U-Turns |
 | 180888 | 158.34 | Sharp U-Turn after long straight |
 | 373468 | 136.72 | Sharp U-Turn after long straight |
 | 693592 | 073.01 | Sharp U-Turn after long straight |
