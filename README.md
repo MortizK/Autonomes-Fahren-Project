@@ -110,12 +110,12 @@ Das Krümmungsfenster von ±8 Einheiten lässt kurze Kurven flacher wirken als l
 | --------- | -------- | --------- |
 | `kp`, `ki`, `kd` | 8.0, 1.0, 0.05 | PID auf die Soll-Beschleunigung |
 | `max_speed`, `min_speed` | 100, 30 | Grenzen der Zielgeschwindigkeit (Einheiten/s) |
-| `lateral_accel` | 240 | erlaubte Querbeschleunigung auf der Mittellinie (Einheiten/s²) |
+| `lateral_accel` | 220 | erlaubte Querbeschleunigung auf der Mittellinie (Einheiten/s²) |
 | `brake_accel` | 150 | eingeplante Verzögerung vor Kurven (Einheiten/s²) |
 | `curvature_window` | 8 | Punkte links und rechts für die Krümmung |
 | `max_brake` | 0.7 | maximaler Bremswert |
 
-`lateral_accel` liegt über der Haftgrenze von 219 Einheiten/s², weil sie auf die Krümmung der Mittellinie bezogen ist und das Auto Kurven anschneidet.
+`lateral_accel` liegt an der Haftgrenze von 219 Einheiten/s². 240 war auf kurzen Kurven minimal schneller, weil das Auto sie anschneidet. In langen Haarnadeln geht das aber nicht: Dort rutschte das Auto nach außen, verlor die Strecke und drehte sich (U-Turn-Test in Abschnitt 9).
 
 ## 9. Performance-Analyse der Regler
 
@@ -124,30 +124,43 @@ Das Krümmungsfenster von ±8 Einheiten lässt kurze Kurven flacher wirken als l
 ```bash
 python benchmark_control.py --mode pipeline --episodes 50   # komplette Pipeline
 python benchmark_control.py --mode gt --episodes 50         # Regler auf der Ground-Truth-Mittellinie
+python benchmark_control.py --mode pipeline --seeds         # U-Turn-Test (HAIRPIN_SEEDS)
 ```
 
-Abgestimmt wurde auf den Seeds 0-23, bewertet auf den Seeds 1000-1049, die beim Abstimmen nicht verwendet wurden.
+Abgestimmt wurde auf den Seeds 0-23, bewertet auf den Seeds 1000-1049, die beim Abstimmen nicht verwendet wurden. Für den U-Turn-Test wurden aus den Seeds 2000-3199 die 24 schärfsten Kehren nach einer Geraden gesucht (~170° auf 42 Einheiten), dazu kommen die schwierigen Seeds aus `FINDINGS.md`.
 
 ### Ergebnisse (Seeds 1000-1049, komplette Pipeline)
 
-Spurerkennung und Pfadplanung (einfache Mittellinie) sind in allen Zeilen gleich, verändert wurden nur die Regler. Schritte pro Runde nur über abgeschlossene Runden.
+Spurerkennung und Pfadplanung (Stand 23.10.) sind in allen Zeilen gleich, verändert wurden nur die Regler. Schritte pro Runde nur über abgeschlossene Runden.
 
 | Variante | Ø Score | Std | Min | Runden | Schritte/Runde | Offroad |
 | -------- | ------: | --: | --: | -----: | -------------: | ------: |
-| **Final**: Stanley (Sehne 12, Dämpfung), Zielgeschwindigkeit aus Krümmung | **925,9** | 7,5 | 904,0 | 50/50 | 741 | 0 |
-| Stanley ohne Dämpfung | 925,7 | 7,6 | 903,5 | 50/50 | 743 | 0 |
-| Pure Pursuit (`lookahead_gain` 0,25, wieder entfernt) | 922,6 | 36,6 | 671,4 | 49/50 | 722 | 489 |
-| Klassischer Stanley (Tangente, ohne Dämpfung) | 480,9 | 276,2 | -42,5 | 0/50 | - | 14349 |
-| Erste Version (klassischer Stanley, `lateral_accel` 150, Fenster 4) | 902,7 | 28,5 | 743,7 | 43/50 | 882 | 0 |
-| Konstante Zielgeschwindigkeit 50 | 865,8 | 49,1 | 697,8 | 18/50 | 949 | 0 |
+| **Final**: Stanley (Sehne 12, Dämpfung), Zielgeschwindigkeit aus Krümmung | **925,5** | 7,5 | 903,2 | 50/50 | 746 | 0 |
+| Stanley ohne Dämpfung | 925,0 | 7,6 | 902,8 | 50/50 | 750 | 0 |
+| Pure Pursuit (`lookahead_gain` 0,25, wieder entfernt) | 926,7 | 7,7 | 902,9 | 50/50 | 733 | 0 |
+| `lateral_accel` 240 (alter Standard) | 735,7 | 343,3 | 51,1 | 37/50 | 735 | 6100 |
+| Klassischer Stanley (Tangente, ohne Dämpfung) | 380,8 | 256,9 | 40,9 | 1/50 | 768 | 18191 |
+| Erste Version (klassischer Stanley, `lateral_accel` 150, Fenster 4) | 907,9 | 27,4 | 781,4 | 45/50 | 849 | 44 |
+| Konstante Zielgeschwindigkeit 50 | 860,4 | 51,7 | 684,4 | 18/50 | 955 | 0 |
 
 Offroad zählt Schritte, in denen alle vier Räder neben der Strecke sind.
 
+### U-Turn-Test (`HAIRPIN_SEEDS`, 28 Seeds, komplette Pipeline)
+
+| Variante | Ø Score | Min | Runden | Offroad |
+| -------- | ------: | --: | -----: | ------: |
+| **Final** | **915,1** | 871,4 | 26/28 | 0 |
+| Pure Pursuit | 895,7 | 718,2 | 23/28 | 603 |
+| `lateral_accel` 240 (alter Standard) | 475,2 | -10,4 | 11/28 | 7927 |
+
+Die zwei fehlenden Runden beim finalen Stand sind lange Strecken, die im Zeitlimit von 1000 Schritten zu 97 % bzw. 99 % gefahren werden.
+
 Einordnung:
 
-- **Pipeline vs. Ground Truth**: Auf den Abstimm-Seeds erreichen die Regler mit der echten Pipeline 925,0 und auf der Ground-Truth-Mittellinie 925,5. Die Regler kommen also mit dem Pixelrauschen der Spurerkennung zurecht.
-- **Sehne statt Tangente** ist der wichtigste Baustein. Die Tangente aus pixelgenauen Punkten rauscht so stark, dass der klassische Stanley mit derselben Längsregelung keine Runde schafft.
-- **Pure Pursuit** fährt die Runden schneller (722 statt 741 Schritte), schneidet aber stärker und ist einmal von der Strecke abgekommen (Minimum 671 statt 904). Bei zu kurzer Vorausschau (`lookahead_gain` 0,15) schaukelt es sich auf und verlässt die Strecke. Stanley ist robuster und bleibt deshalb als einziger Regler im Code.
+- **Pipeline vs. Ground Truth**: Auf der Ground-Truth-Mittellinie erreichen die Regler auf denselben Seeds 926,0 statt 925,5. Die Regler kommen also mit dem Pixelrauschen der Spurerkennung zurecht.
+- **Haarnadeln**: Mit `lateral_accel` 240 war das Auto in langen Kehren zu schnell, rutschte nach außen und drehte sich, sobald die Spurerkennung die Strecke verlor. Aufgefallen ist das erst, seit die Mittellinie in Kehren länger sichtbar ist. Vorher hat die kurze Sichtweite das Auto zufällig abgebremst.
+- **Sehne statt Tangente** ist der wichtigste Baustein. Die Tangente aus pixelgenauen Punkten rauscht so stark, dass der klassische Stanley mit derselben Längsregelung fast keine Runde schafft.
+- **Pure Pursuit** ist auf normalen Strecken etwa 1 Punkt schneller, weil es Kurven stärker schneidet. In Haarnadeln kommt es aber von der Strecke ab (5 von 28 Runden nicht geschafft). Bei zu kurzer Vorausschau (`lookahead_gain` 0,15) schaukelt es sich auf. Stanley ist robuster und bleibt deshalb als einziger Regler im Code.
 - **Dämpfung**: Auf den Abstimm-Seeds +0,6 Punkte und maximale Querabweichung 5,9 statt 7,5 Einheiten, auf den Test-Seeds kein messbarer Unterschied. Sie bleibt drin, weil sie nicht schadet.
 - **Kammscher Kreis**: Ohne die Gasbegrenzung beim Lenken nur Ø 80 Punkte (Abstimm-Seeds), die Hinterräder brechen in fast jeder Kurve aus.
 - **Grenzen**: In rund 68 % der Schritte ist die Zielgeschwindigkeit das Höchsttempo, das Auto liegt dort im Mittel aber noch rund 20 Einheiten/s darunter. Der Motor ist der Engpass. Mehr Score bringt vor allem eine Ideallinie aus der Pfadplanung, die Kurvenradien vergrößert. Mit `--domain_randomize` ist die Pipeline noch nicht getestet.
@@ -158,8 +171,8 @@ Pro Simulationsschritt im Benchmark (8 Prozesse parallel), Budget bei 50 FPS sin
 
 | Modul | p50 | p95 | p99 |
 | ----- | --: | --: | --: |
-| Querregelung | 0,42 ms | 1,16 ms | 2,93 ms |
-| Längsregelung | 0,36 ms | 1,01 ms | 2,81 ms |
-| Gesamte Pipeline | 2,78 ms | 7,16 ms | 11,47 ms |
+| Querregelung | 0,24 ms | 0,36 ms | 0,40 ms |
+| Längsregelung | 0,21 ms | 0,32 ms | 0,37 ms |
+| Gesamte Pipeline | 2,26 ms | 3,22 ms | 3,93 ms |
 
-Einzeln gemessen ohne Last braucht die Querregelung 0,12 ms und die Längsregelung 0,15 ms. Einzelne Ausreißer bis 40-90 ms treten in allen Modulen auf, auch bei der Längsregelung mit wenigen Rechenschritten. Vermutlich kommen sie vom Scheduling bei paralleler Last, p99 liegt bei allen Reglern unter 3 ms. Alle Berechnungen sind mit numpy vektorisiert, Schleifen über Pfadpunkte gibt es nicht.
+Das Maximum liegt bei beiden Reglern unter 1,1 ms. Alle Berechnungen sind mit numpy vektorisiert, Schleifen über Pfadpunkte gibt es nicht.
