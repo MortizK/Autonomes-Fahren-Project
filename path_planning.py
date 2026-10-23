@@ -6,6 +6,27 @@ class PathPlanning:
     def __init__(self):
         pass
 
+    def create_centerline(self, longer_boundaries: list, shorter_boundaries: list) -> list:
+        max_track_width = 32
+        centerline = []
+
+        for i in range(0, len(longer_boundaries) - 1, 5):
+            outside_point = np.array(longer_boundaries[i])
+
+            # Find nearest outside lane boundary point to the right lane boundary point
+            distances = np.linalg.norm(np.array(shorter_boundaries) - outside_point, axis=1)
+            if np.min(distances) > max_track_width:
+                continue  # Skip this point if the nearest left lane boundary point is too far away
+
+            nearest_inside_index = np.argmin(distances)
+            nearest_inside_point = np.array(shorter_boundaries[nearest_inside_index])
+
+            # Calculate the midpoint between the right and left lane boundary points
+            midpoint = (outside_point + nearest_inside_point) / 2
+            centerline.append(midpoint.tolist())
+
+        return centerline
+
     def plan(self, left_lane_boundaries: list, right_lane_boundaries: list) -> tuple[list, list]:
         """
         Plan the trajectory based on the detected lane boundaries.
@@ -27,28 +48,6 @@ class PathPlanning:
             return [], []
 
         # Phase 1: Generate a centerline trajectory based on the detected lane boundaries
-        max_distance = 35
-
-        index_left = 0
-        index_right = 0
-        centerline = []
-        while index_left < len(left_lane_boundaries) and index_right < len(right_lane_boundaries):
-            distance = np.linalg.norm(np.array(left_lane_boundaries[index_left]) - np.array(right_lane_boundaries[index_right]))
-            if distance < max_distance:
-                center_point = (np.array(left_lane_boundaries[index_left]) + np.array(right_lane_boundaries[index_right])) / 2
-                centerline.append(center_point)
-                index_left += 5
-                index_right += 5
-            else:
-                index_left_new = index_left + 1
-                index_right_new = index_right + 1
-                if index_left_new >= len(left_lane_boundaries) or index_right_new >= len(right_lane_boundaries):
-                    break
-                distance_left = np.linalg.norm(np.array(left_lane_boundaries[index_left_new]) - np.array(right_lane_boundaries[index_right]))
-                distance_right = np.linalg.norm(np.array(left_lane_boundaries[index_left]) - np.array(right_lane_boundaries[index_right_new]))
-                if distance_left < distance_right:
-                    index_left = index_left_new
-                else:
-                    index_right = index_right_new
+        centerline = self.create_centerline(right_lane_boundaries, left_lane_boundaries)
 
         return centerline, []
