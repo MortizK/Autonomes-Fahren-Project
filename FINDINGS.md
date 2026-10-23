@@ -158,9 +158,12 @@ the corner is safer than braking while already using most lateral grip.
 
 ### Difficult Seeds
 
-| Seed | Notes |
-| ---- | ----- |
-| 197453 | S-Turn and some U-Turns |
+| Seed | Score | Notes |
+| ---- | ----- | ----- |
+| 197453 | - | S-Turn and some U-Turns |
+| 180888 | 158.34 | Sharp U-Turn after long straight |
+| 373468 | 136.72 | Sharp U-Turn after long straight |
+| 693592 | 073.01 | Sharp U-Turn after long straight |
 
 Also, maybe we can Use the First Frame of the Simulation to estimate a path planning. As we can expect some Turns from the global view.
 

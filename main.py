@@ -88,6 +88,7 @@ def evaluate(env, eval_runs=50, eval_length=600, display_debug=True):
         car = Car()
 
         episode_rewards.append(0.0)
+        time_finished = 0
         for t in range(eval_length):
 
             action = car.next_action(state_image, info)
@@ -98,11 +99,13 @@ def evaluate(env, eval_runs=50, eval_length=600, display_debug=True):
                 draw_debug_overlay(env, state_image, info, action)
 
             if done or trunc:
+                time_finished = t
                 break
 
         print(
             f"episode: {episode:02d}     "
             f"seed: {seed:06d}     "
+            f"time: {time_finished:03d}     "
             f"reward: {episode_rewards[-1]:06.2F}     "
             f"avg 5 reward: {np.mean(np.asarray(episode_rewards[-5:])):06.2f}     "
             f"avg reward: {np.mean(np.asarray(episode_rewards)):06.2f}     "
@@ -134,7 +137,7 @@ def main():
         )
     )
 
-    evaluate(env, eval_runs=1, eval_length=250, display_debug=not args.no_display)
+    evaluate(env, eval_runs=50, eval_length=2000, display_debug=not args.no_display)
 
     env.reset()
 
