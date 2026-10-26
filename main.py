@@ -5,6 +5,7 @@ import gymnasium as gym
 import numpy as np
 from car import Car
 from env_wrapper import CarRacingEnvWrapper
+from telemetry import TelemetryLogger
 
 
 def _wheel_metrics(wheel) -> list[str]:
@@ -77,8 +78,9 @@ def draw_debug_overlay(env, state_image: np.ndarray, info: dict, action=None) ->
     cv2.waitKey(1)
 
 
-def evaluate(env, eval_runs=50, eval_length=600, display_debug=True):
+def evaluate(env, eval_runs=50, eval_length=600, display_debug=True, telemetry_dir=None):
     seeds = [373468, 693592, 197453, 180888]
+    telemetry = TelemetryLogger(telemetry_dir) if telemetry_dir else None
 
     episode_rewards = []
     for episode in range(eval_runs):
@@ -90,6 +92,8 @@ def evaluate(env, eval_runs=50, eval_length=600, display_debug=True):
         state_image, info = env.reset(seed=seed)
 
         car = Car()
+        if telemetry:
+            telemetry.start_episode(episode, seed)
 
         episode_rewards.append(0.0)
         time_finished = 0
@@ -99,6 +103,19 @@ def evaluate(env, eval_runs=50, eval_length=600, display_debug=True):
 
             state_image, r, done, trunc, info = env.step(action)
             episode_rewards[-1] += r
+            if telemetry:
+                telemetry.record(
+                    step=t,
+                    episode=episode,
+                    seed=seed,
+                    info=info,
+                    action=action,
+                    reward=r,
+                    terminated=done,
+                    truncated=trunc,
+                    env=env,
+                    car=car,
+                )
             if display_debug:
                 draw_debug_overlay(env, state_image, info, action)
 
@@ -124,12 +141,15 @@ def evaluate(env, eval_runs=50, eval_length=600, display_debug=True):
     print(" top 5 avg score: %f" % (np.mean(np.sort(np.asarray(episode_rewards))[-5:])))
     print(" low 5 avg score: %f" % (np.mean(np.sort(np.asarray(episode_rewards))[:5])))
     print("---------------------------")
+    if telemetry:
+        telemetry.close()
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--no_display", action="store_true", default=False)
     parser.add_argument("--domain_randomize", action="store_true", default=False)
+    parser.add_argument("--telemetry_dir", default=None, help="write per-step JSONL telemetry")
     args = parser.parse_args()
 
     render_mode = "rgb_array" if args.no_display else "human"
@@ -141,7 +161,13 @@ def main():
         )
     )
 
-    evaluate(env, eval_runs=50, eval_length=2000, display_debug=not args.no_display)
+    evaluate(
+        env,
+        eval_runs=50,
+        eval_length=2000,
+        display_debug=not args.no_display,
+        telemetry_dir=args.telemetry_dir,
+    )
 
     env.reset()
 

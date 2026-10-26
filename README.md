@@ -46,6 +46,14 @@ Die test Dateien können mit `python <test-file>.py` ausgeführt werden. Die Sim
 
 ## 4. Hinweise
 
+Für die Fehlersuche kann jeder Simulationsschritt inklusive Aktion, Fahrzeug-, Rad- und Reglerzustand protokolliert werden:
+
+```bash
+python main.py --no_display --telemetry_dir ./data/telemetry
+```
+
+Es entsteht eine JSONL-Datei pro Episode. Jede Zeile entspricht einem Simulationsschritt von `DT = 0.02 s`.
+
 Die Dateien `main.py`, `env_wrapper.py` und `input_controller.py` dürfen nicht verändert werden, damit die Ergebnisse vergleichbar bleiben. Alle anderen Dateien können beliebig verändert werden.
 
 ## 5. Commit Richtlinien
@@ -97,13 +105,14 @@ Als Alternative wurde Pure Pursuit umgesetzt und verglichen (Kreisbogen von der 
 2. Bremsweg: Ein Punkt im Abstand s erlaubt `sqrt(v_kurve^2 + 2 * a_brems * s)`. Das Minimum über alle Punkte ist die Zielgeschwindigkeit.
 3. Sichtweite: Hinter dem Pfadende kann eine Haarnadelkurve kommen, bis dorthin muss das Auto auf `min_speed` bremsen können. Weniger Sicht bedeutet automatisch langsamer.
 
-Das Krümmungsfenster von ±8 Einheiten lässt kurze Kurven flacher wirken als lange. Das passt zum Fahrverhalten, kurze Kurven schneidet das Auto stärker an.
+Das Krümmungsfenster von ±4 Einheiten erfasst kurze Kurven besser, ohne die Krümmung durch einen langen Ausblick zu stark zu glätten. Das passt zum Fahrverhalten, kurze Kurven schneidet das Auto stärker an.
 
 **PID-Regler**: Der Ausgang ist eine Soll-Beschleunigung. Über gemessene Kennwerte (Vollgas ≈ 44 Einheiten/s², Bremse ≈ 300 · b Einheiten/s²) wird sie in Gas oder Bremse umgerechnet.
 
 - D-Anteil auf die gemessene Beschleunigung statt auf den Fehler, Sprünge der Zielgeschwindigkeit erzeugen so keinen Stoß.
 - Anti-Windup: Integriert wird nur, solange der Ausgang nicht in der Begrenzung steckt.
 - Kammscher Kreis: Die Querbeschleunigung wird aus Lenkwinkel und Tempo geschätzt (`v² · tan(delta) / L`), nur die restliche Haftung bekommt das Gas. Ohne diese Begrenzung brechen die Hinterräder in Kurven aus.
+- Zusätzlich wird das Gas bis zum Auslenken der Räder stark reduziert, damit beim Kurvenausgang nicht zu früh beschleunigt wird.
 - Bremse höchstens 0,7, darüber blockieren die Räder nach einigen Schritten.
 
 | Parameter | Standard | Bedeutung |
@@ -112,7 +121,7 @@ Das Krümmungsfenster von ±8 Einheiten lässt kurze Kurven flacher wirken als l
 | `max_speed`, `min_speed` | 100, 30 | Grenzen der Zielgeschwindigkeit (Einheiten/s) |
 | `lateral_accel` | 240 | erlaubte Querbeschleunigung auf der Mittellinie (Einheiten/s²) |
 | `brake_accel` | 150 | eingeplante Verzögerung vor Kurven (Einheiten/s²) |
-| `curvature_window` | 8 | Punkte links und rechts für die Krümmung |
+| `curvature_window` | 4 | Punkte links und rechts für die Krümmung |
 | `max_brake` | 0.7 | maximaler Bremswert |
 
 `lateral_accel` liegt über der Haftgrenze von 219 Einheiten/s², weil sie auf die Krümmung der Mittellinie bezogen ist und das Auto Kurven anschneidet.
