@@ -3,8 +3,9 @@ Controller benchmark (testing only): score and runtime over fixed seeds, headles
 
     python benchmark_control.py --mode pipeline   # full pipeline
     python benchmark_control.py --mode gt         # controllers on the ground truth centerline
+    python benchmark_control.py --seeds 693592 373468   # specific seeds
 
-Tuned on seeds 0-23, evaluated on 1000-1049 (default).
+Tuned on seeds 0-23, evaluated on 1000-1049 (default) and HAIRPIN_SEEDS.
 """
 
 import argparse
@@ -23,6 +24,10 @@ from path_planning import PathPlanning
 
 # Timed sections per step
 TIMED = ("lane_detection", "path_planning", "lateral_control", "longitudinal_control", "total")
+
+# Sharpest U-turns of seeds 2000-3199 plus the difficult seeds from FINDINGS.md
+HAIRPIN_SEEDS = (2006, 2730, 2788, 2440, 3171, 2713, 3003, 2022, 2424, 2333, 2892, 2981, 2616, 2342,
+                 2526, 2473, 3020, 2667, 2421, 3159, 2720, 2431, 2846, 2378, 180888, 373468, 693592, 197453)
 
 _env = None
 
@@ -143,11 +148,14 @@ def main():
     parser.add_argument("--mode", choices=("gt", "pipeline"), default="gt")
     parser.add_argument("--episodes", type=int, default=50)
     parser.add_argument("--seed", type=int, default=1000, help="first seed, then consecutive")
+    parser.add_argument("--seeds", type=int, nargs="*", help="explicit seeds, no value = HAIRPIN_SEEDS")
     parser.add_argument("--steps", type=int, default=1000)
     parser.add_argument("--workers", type=int, default=8)
     args = parser.parse_args()
 
     seeds = range(args.seed, args.seed + args.episodes)
+    if args.seeds is not None:
+        seeds = args.seeds or HAIRPIN_SEEDS
     summarize(evaluate(seeds, args.mode, args.steps, workers=args.workers))
 
 

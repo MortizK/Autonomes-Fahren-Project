@@ -165,6 +165,13 @@ the corner is safer than braking while already using most lateral grip.
 | 373468 | 136.72 | Sharp U-Turn after long straight |
 | 693592 | 073.01 | Sharp U-Turn after long straight |
 
+Cause of the U-turn failures: with the new centerline the path stays visible
+through hairpins, so the target speed came from `lateral_accel = 240`, about
+52 units/s for a radius of 11. The tires only allow ~49 units/s, the car slid
+outwards, the lane detection lost the track and the car spun. With
+`lateral_accel = 220`: 180888 910.50, 373468 921.00, 693592 926.40,
+197453 910.00, all without leaving the track.
+
 Also, maybe we can Use the First Frame of the Simulation to estimate a path planning. As we can expect some Turns from the global view.
 
 ## Control and State Estimation

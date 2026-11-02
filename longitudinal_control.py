@@ -23,7 +23,7 @@ class LongitudinalControl:
         kd: float = 0.05,
         max_speed: float = 100.0,
         min_speed: float = 30.0,
-        lateral_accel: float = 240.0,
+        lateral_accel: float = 220.0,
         brake_accel: float = 150.0,
         curvature_window: int = 8,
         max_brake: float = 0.7,
@@ -34,7 +34,7 @@ class LongitudinalControl:
 
         self.max_speed = max_speed
         self.min_speed = min_speed
-        self.lateral_accel = lateral_accel  # on the centerline, above the grip limit since curves are cut
+        self.lateral_accel = lateral_accel  # on the centerline, at the grip limit (hairpins can't be cut)
         self.brake_accel = brake_accel  # planned deceleration before curves
         self.curvature_window = curvature_window  # points per side, short curves look flatter
         self.max_brake = max_brake  # wheels lock above ~0.7
