@@ -12,6 +12,7 @@ class Car:
         self._path_planning = PathPlanning()
         self._lateral_control = LateralControl()
         self._longitudinal_control = LongitudinalControl()
+        self.planned_trajectory = []
 
     def next_action(self, observation: np.ndarray, info: dict[str, any]) -> list:
         """Defines the next action to take based on the current observation, reward,
@@ -34,6 +35,7 @@ class Car:
         trajectory, _ = self._path_planning.plan(
             left_lane_boundaries, right_lane_boundaries
         )
+        self.planned_trajectory = trajectory
         steering_angle = self._lateral_control.control(trajectory, info["speed"])
         target_speed = self._longitudinal_control.predict_target_speed(trajectory)
         acceleration, braking = self._longitudinal_control.control(

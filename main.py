@@ -44,12 +44,30 @@ def _text(panel, text, position, scale=0.45, color=(255, 255, 255)) -> None:
     )
 
 
-def draw_debug_overlay(env, state_image: np.ndarray, info: dict, action=None) -> None:
-    """Draw the observation and telemetry in a separate debug window."""
+def draw_debug_overlay(
+    env,
+    state_image: np.ndarray,
+    info: dict,
+    action=None,
+    trajectory=None,
+) -> None:
+    """Draw the observation, planned path, and telemetry in a separate window."""
     car = env.unwrapped.car
     hull_velocity = car.hull.linearVelocity
     panel = np.zeros((620, 700, 3), dtype=np.uint8)
-    state_bgr = cv2.cvtColor(state_image, cv2.COLOR_RGB2BGR)
+    state_with_path = np.array(state_image, copy=True)
+    for point in trajectory or []:
+        x, y = np.asarray(point, dtype=float)
+        if np.isfinite(x) and np.isfinite(y):
+            cv2.circle(
+                state_with_path,
+                (int(round(x)), int(round(y))),
+                0,
+                (255, 255, 255),
+                -1,
+            )
+
+    state_bgr = cv2.cvtColor(state_with_path, cv2.COLOR_RGB2BGR)
     state_bgr = cv2.resize(state_bgr, (288, 288), interpolation=cv2.INTER_NEAREST)
     panel[8:296, 8:296] = state_bgr
 
@@ -117,7 +135,13 @@ def evaluate(env, eval_runs=50, eval_length=600, display_debug=True, telemetry_d
                     car=car,
                 )
             if display_debug:
-                draw_debug_overlay(env, state_image, info, action)
+                draw_debug_overlay(
+                    env,
+                    state_image,
+                    info,
+                    action,
+                    trajectory=car.planned_trajectory,
+                )
 
             if done or trunc:
                 time_finished = t
