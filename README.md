@@ -109,14 +109,13 @@ Als Alternative wurde Pure Pursuit umgesetzt und verglichen (Kreisbogen von der 
 2. Bremsweg: Ein Punkt im Abstand s erlaubt `sqrt(v_kurve^2 + 2 * a_brems * s)`. Das Minimum über alle Punkte ist die Zielgeschwindigkeit.
 3. Sichtweite: Hinter dem Pfadende kann eine Haarnadelkurve kommen, bis dorthin muss das Auto auf `min_speed` bremsen können. Weniger Sicht bedeutet automatisch langsamer.
 
-Das Krümmungsfenster von ±4 Einheiten erfasst kurze Kurven besser, ohne die Krümmung durch einen langen Ausblick zu stark zu glätten. Das passt zum Fahrverhalten, kurze Kurven schneidet das Auto stärker an.
+Das Krümmungsfenster von ±8 Einheiten lässt kurze Kurven flacher wirken als lange. Das passt zum Fahrverhalten, kurze Kurven schneidet das Auto stärker an. Mit ±4 sinkt der Score auf 924,0 (Haarnadel 913,3, 26/28 Runden).
 
 **PID-Regler**: Der Ausgang ist eine Soll-Beschleunigung. Über gemessene Kennwerte (Vollgas ≈ 44 Einheiten/s², Bremse ≈ 300 · b Einheiten/s²) wird sie in Gas oder Bremse umgerechnet.
 
 - D-Anteil auf die gemessene Beschleunigung statt auf den Fehler, Sprünge der Zielgeschwindigkeit erzeugen so keinen Stoß.
 - Anti-Windup: Integriert wird nur, solange der Ausgang nicht in der Begrenzung steckt.
 - Kammscher Kreis: Die Querbeschleunigung wird aus Lenkwinkel und Tempo geschätzt (`v² · tan(delta) / L`), nur die restliche Haftung bekommt das Gas. Ohne diese Begrenzung brechen die Hinterräder in Kurven aus.
-- Zusätzlich wird das Gas bis zum Auslenken der Räder stark reduziert, damit beim Kurvenausgang nicht zu früh beschleunigt wird.
 - Bremse höchstens 0,7, darüber blockieren die Räder nach einigen Schritten.
 
 | Parameter | Standard | Bedeutung |
@@ -125,7 +124,7 @@ Das Krümmungsfenster von ±4 Einheiten erfasst kurze Kurven besser, ohne die Kr
 | `max_speed`, `min_speed` | 100, 30 | Grenzen der Zielgeschwindigkeit (Einheiten/s) |
 | `lateral_accel` | 220 | erlaubte Querbeschleunigung auf der Mittellinie (Einheiten/s²) |
 | `brake_accel` | 150 | eingeplante Verzögerung vor Kurven (Einheiten/s²) |
-| `curvature_window` | 4 | Punkte links und rechts für die Krümmung |
+| `curvature_window` | 8 | Punkte links und rechts für die Krümmung |
 | `max_brake` | 0.7 | maximaler Bremswert |
 
 `lateral_accel` liegt an der Haftgrenze von 219 Einheiten/s². 240 war auf kurzen Kurven minimal schneller, weil das Auto sie anschneidet. In langen Haarnadeln geht das aber nicht: Dort rutschte das Auto nach außen, verlor die Strecke und drehte sich (U-Turn-Test in Abschnitt 9).
