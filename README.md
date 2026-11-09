@@ -198,8 +198,10 @@ Pro Simulationsschritt im Benchmark (8 Prozesse parallel), Budget bei 50 FPS sin
 
 | Modul | p50 | p95 | p99 |
 | ----- | --: | --: | --: |
-| Querregelung | 0,24 ms | 0,36 ms | 0,40 ms |
-| Längsregelung | 0,21 ms | 0,32 ms | 0,37 ms |
-| Gesamte Pipeline | 2,26 ms | 3,22 ms | 3,93 ms |
+| Spurerkennung | 1,34 ms | 2,42 ms | 3,29 ms |
+| Pfadplanung | 1,33 ms | 2,57 ms | 3,36 ms |
+| Querregelung | 0,38 ms | 0,67 ms | 0,94 ms |
+| Längsregelung | 0,32 ms | 0,63 ms | 0,89 ms |
+| Gesamte Pipeline | 3,41 ms | 6,10 ms | 7,62 ms |
 
-Das Maximum liegt bei beiden Reglern unter 1,1 ms. Alle Berechnungen sind mit numpy vektorisiert, Schleifen über Pfadpunkte gibt es nicht.
+Das p99 liegt bei beiden Reglern unter 1 ms. Alle Berechnungen sind mit numpy vektorisiert, Schleifen über Pfadpunkte gibt es nicht.
