@@ -21,7 +21,6 @@ Das Projekt ist wie folgt zu strukturieren:
 ```python
 working-dir/
 | - .gitignore # Definition von Dateien, die nicht von git getrackt werden sollen
-| - benchmark_control.py # Performance-Analyse: Laufzeit und Score über viele Seeds
 | - car.py # Beschreibt das Fahrzeug und enthält die gesamte Pipeline
 | - env_wrapper.py # Wrapper für die Gymnasium Car Racing Simulation
 | - geometry.py # Umrechnung Pixel -> Fahrzeugkoordinaten, Pfad und Krümmung für die Regler
@@ -45,14 +44,6 @@ working-dir/
 Die test Dateien können mit `python <test-file>.py` ausgeführt werden. Die Simulation wird sich öffnen und das Fahrzeug wird sich entsprechend der Pipeline bewegen. Um das Endergebnis zu simulieren, kann die `main.py` Datei ausgeführt werden. Sie führt die Pipeline über 5 Iterationen aus und berechnet den durchschnittlichen Score.
 
 ## 4. Hinweise
-
-Für die Fehlersuche kann jeder Simulationsschritt inklusive Aktion, Fahrzeug-, Rad- und Reglerzustand protokolliert werden:
-
-```bash
-python main.py --no_display --telemetry_dir ./data/telemetry
-```
-
-Es entsteht eine JSONL-Datei pro Episode. Jede Zeile entspricht einem Simulationsschritt von `DT = 0.02 s`.
 
 Die Dateien `main.py`, `env_wrapper.py` und `input_controller.py` dürfen nicht verändert werden, damit die Ergebnisse vergleichbar bleiben. Alle anderen Dateien können beliebig verändert werden.
 
@@ -131,15 +122,11 @@ Das Krümmungsfenster von ±8 Einheiten lässt kurze Kurven flacher wirken als l
 
 ## 9. Performance-Analyse der Regler
 
-`benchmark_control.py` fährt ohne Fenster und parallel über feste Seeds und misst Score, Rundenabschluss, Querabweichung zur echten Mittellinie, Offroad-Schritte und die Laufzeit jedes Moduls.
+Gemessen wurde mit einem eigenen Benchmark-Skript, das nur zum Abstimmen diente und nicht Teil der Abgabe ist. Es fährt ohne Fenster und parallel über feste Seeds und misst Score, Rundenabschluss, Querabweichung zur echten Mittellinie, Offroad-Schritte und die Laufzeit jedes Moduls.
 
-```bash
-python benchmark_control.py --mode pipeline --episodes 50   # komplette Pipeline
-python benchmark_control.py --mode gt --episodes 50         # Regler auf der Ground-Truth-Mittellinie
-python benchmark_control.py --mode pipeline --seeds         # U-Turn-Test (HAIRPIN_SEEDS)
-```
+Abgestimmt wurde auf den Seeds 0-23, bewertet auf den Seeds 1000-1049, die beim Abstimmen nicht verwendet wurden. Für den U-Turn-Test wurden aus den Seeds 2000-3199 die 24 schärfsten Kehren nach einer Geraden gesucht (~170° auf 42 Einheiten), dazu kommen die schwierigen Seeds aus `FINDINGS.md`:
 
-Abgestimmt wurde auf den Seeds 0-23, bewertet auf den Seeds 1000-1049, die beim Abstimmen nicht verwendet wurden. Für den U-Turn-Test wurden aus den Seeds 2000-3199 die 24 schärfsten Kehren nach einer Geraden gesucht (~170° auf 42 Einheiten), dazu kommen die schwierigen Seeds aus `FINDINGS.md`.
+`2006, 2730, 2788, 2440, 3171, 2713, 3003, 2022, 2424, 2333, 2892, 2981, 2616, 2342, 2526, 2473, 3020, 2667, 2421, 3159, 2720, 2431, 2846, 2378, 180888, 373468, 693592, 197453`
 
 ### Ergebnisse (Seeds 1000-1049, komplette Pipeline)
 
@@ -158,7 +145,7 @@ Spurerkennung und Pfadplanung (Stand 23.10.) sind in allen Zeilen gleich, verän
 
 Offroad zählt Schritte, in denen alle vier Räder neben der Strecke sind.
 
-### U-Turn-Test (`HAIRPIN_SEEDS`, 28 Seeds, komplette Pipeline)
+### U-Turn-Test (28 Seeds mit Kehren, komplette Pipeline)
 
 | Variante | Ø Score | Min | Runden | Offroad |
 | -------- | ------: | --: | -----: | ------: |

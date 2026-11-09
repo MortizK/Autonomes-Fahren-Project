@@ -8,10 +8,8 @@ from env_wrapper import CarRacingEnvWrapper
 from input_controller import InputController
 from lane_detection import LaneDetection
 
-from main import draw_debug_overlay
 
-
-def run(env, input_controller: InputController, display_debug=True):
+def run(env, input_controller: InputController):
     seed = int(np.random.randint(0, int(1e6)))
     # seed = 197453   # Seed with S-Curves and U-Turns
     print(f"seed: {seed:06d}")
@@ -51,9 +49,6 @@ def run(env, input_controller: InputController, display_debug=True):
         total_reward += r
 
         # done = True     # Debug to Capture the first frame of each run
-
-        if display_debug:
-            draw_debug_overlay(env, state_image, info, a)
 
         # Reset environment if the run is skipped
         input_controller.update()
