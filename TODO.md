@@ -57,6 +57,7 @@
 
 - [x] Remove `benchmark_control.py`, it is only for testing and tuning the controllers (also remove it from the README: file structure and section 9)
 - [x] Restore `main.py` to the original (no debug window, telemetry or fixed seeds)
+- [x] Remove tuning tools and debug leftovers (`test_control.py`, color analysis, pace-notes experiment, fixed test seeds)
 
 ## Pipeline
 

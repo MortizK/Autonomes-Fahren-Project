@@ -1,7 +1,5 @@
-import cv2
 import numpy as np
 
-import matplotlib.pyplot as plt
 
 class LaneDetection:
     CAR_CENTER_X = 48
@@ -9,19 +7,12 @@ class LaneDetection:
     debug_image: np.ndarray
     road_mask: np.ndarray
     edge_mask: np.ndarray
-    first_image: np.ndarray
-    first_image_road_mask: np.ndarray
-    ordered_points: np.ndarray
-    pace_notes: str
 
     def __init__(self):
         self.debug_image = np.zeros((98, 98, 3), dtype=np.uint8)
         self.road_mask = np.zeros((84, 98), dtype=np.uint8)
         self.edge_mask = np.zeros((84, 98), dtype=np.uint8)
-        self.first_image = None
-        self.first_image_road_mask = None
-        self.ordered_points = None
-        self.pace_notes = ""
+        self._first_frame = True
 
     def _create_road_mask(self, frame: np.ndarray) -> np.ndarray:
         """
@@ -136,111 +127,6 @@ class LaneDetection:
 
         return left_start, right_start
 
-    def _nearest_neighbor_walk(self, point_list: np.ndarray, start_point: np.ndarray, previous_direction=np.array([-1.0, 0.0])) -> tuple[list[np.ndarray], bool]:
-        """
-        Perform a nearest neighbor walk through the given points.
-
-        args:
-            point_list (np.ndarray): An array of points to walk through.
-
-        returns:
-            walk_points (list[np.ndarray]): A list of points representing the walk.
-            closed_loop (bool): True if the walk forms a closed loop, False otherwise.
-        """
-        current_point = np.asarray(start_point, dtype=float)
-
-        walk_points = [current_point.copy()]
-        remaining_points = np.asarray(point_list[1:], dtype=float)
-
-        max_distance = 6.0  # maximum distance to consider
-        alpha = 0.7         # weight for distance score
-        beta = 0.3          # weight for turn score
-
-        while len(remaining_points) > 0:
-            displacements = remaining_points - current_point
-            distances = np.linalg.norm(displacements, axis=1)
-
-            # Exclude points that are too far away
-            valid = (distances > 0) & (distances <= max_distance)
-
-            # If no valid points are found and loop was not closed, 
-            # return empty list to indicate failure to create a closed loop
-            if not np.any(valid):
-                return walk_points, False
-
-            candidate_indices = np.flatnonzero(valid)
-            candidates = remaining_points[valid]
-            candidate_distances = distances[valid]
-
-            directions = displacements[valid] / candidate_distances[:, None]
-
-            # Directional alignment: 1 means straight ahead, -1 means backwards
-            alignment = directions @ previous_direction
-
-            # Penalize sharp turns
-            distance_score = candidate_distances / max_distance
-            turn_score = 1.0 - alignment
-
-            scores = alpha * distance_score + beta * turn_score
-
-            best_local_index = np.argmin(scores)
-            best_index = candidate_indices[best_local_index]
-
-            next_point = remaining_points[best_index]
-            next_direction = directions[best_local_index]
-
-            # check for loop closure: 
-            closure_distance = 2.0
-            distances_to_start = np.linalg.norm(next_point - start_point)
-            if len(walk_points) > 4 and distances_to_start < closure_distance:
-                return walk_points, True
-
-            walk_points.append(next_point.copy())
-
-            current_point = next_point
-            previous_direction = next_direction
-
-            # Remove all points which are closer but where not chosen, to avoid going back on the track
-            remove_mask = (distances <= candidate_distances[best_local_index]) & (valid)
-            remaining_points = np.delete(remaining_points, np.flatnonzero(remove_mask), axis=0)
-        return walk_points, False
-
-    def _create_pace_notes(self, road_mask: np.ndarray) -> str:
-            """
-            Create pace notes based on the road mask.
-    
-            returns:
-                pace_notes (str): A string representing the pace notes.
-            """
-            # road_mask = road_mask[35:84, 0:52]  # Cut the image to the relevant area
-            # road_mask = road_mask[57:84, 17:51]  # Cut the image to the relevant area
-            np.set_printoptions(threshold=np.inf)
-            # self.debug_image = road_mask.copy()  # For debugging purposes
-    
-            point_list = np.argwhere(road_mask == 0)  # Get the coordinates of the road pixels
-            
-            if len(point_list) == 0:
-                return "No Road Found, your on your own!"
-    
-            # Phase 1 - Nearest Neighbor Walk (with directionality)
-            start_point = [self.CAR_BOTTOM_Y - 5, self.CAR_CENTER_X]
-            walk_points, closed_loop = self._nearest_neighbor_walk(point_list, start_point=start_point, previous_direction=np.array([-1.0, 0.0]))
-
-            if not closed_loop:
-                return "No Track Data, your on your own!"
-
-            self.ordered_points = np.zeros(road_mask.shape, dtype=np.uint8)
-            for i in range(len(walk_points) - 1):
-                x1, y1 = walk_points[i]
-                self.ordered_points[int(x1), int(y1)] = 50 + i
-            # print(self.ordered_points)
-    
-            # Phase N - Create the Pace Notes from the points
-            pace_notes = ["MC1"] # Start with a default pace note
-    
-            pace_notes.append("MC2BC") # End with a default pace note
-            return " ".join(pace_notes)
-
     def _track_left_lane(self, left_start: tuple[int, int]) -> list[tuple[int, int]]:
             left_lane_boundaries = self._follow_lane(left_start, self.edge_mask)
 
@@ -268,60 +154,34 @@ class LaneDetection:
             right_lane_boundaries (list): A list of points representing the right lane boundaries.
         """
 
-        if self.first_image is None:
-            self.first_image = observation.copy()
-
         # Phase 1: Preprocessing
         self.cut_image = observation[0:84, 0:98]   # Cut the image
 
-        # Maskierung des Autos
-        if self.first_image_road_mask is not None:
+        # Mask the car, not in the zoomed-out first frame
+        if not self._first_frame:
             self.cut_image[66:self.CAR_BOTTOM_Y, self.CAR_CENTER_X-2:self.CAR_CENTER_X+2] = [100, 100, 100]
+        self._first_frame = False
 
         self.road_mask = self._create_road_mask(self.cut_image)
-        # self.debug_image = self.road_mask
-
-        if self.first_image_road_mask is None:
-            self.first_image_road_mask = self.road_mask
-            self.pace_notes = self._create_pace_notes(self.first_image_road_mask)
-            print(f"Co-Driver: Pace Notes '{self.pace_notes}'")
 
         # Phase 2: Lane Detection
         self.edge_mask = self._detect_edges(self.road_mask)
-        # self.debug_image = self.edge_mask
 
         # Phase 3: Zuordnung zu den Fahrspuren
         self.overlay_image = observation.copy()
-        
+
         left_lane_boundaries = []
         right_lane_boundaries = []
-        # Runtime: until here p95 6ms
 
         left_start, right_start = self._get_starting_point(self.edge_mask)
 
         # Append the left and right lane boundaries from the detected edges
         if left_start is not None:
             left_lane_boundaries = self._track_left_lane(left_start)
-        
+
         if right_start is not None:
             right_lane_boundaries = self._track_right_lane(right_start)
-        # Runtime: until here p95 14ms
 
-        # Phase 4: Lookahead if curve is cut of from the image
-        # last_left = left_lane_boundaries[-1] if left_lane_boundaries else (0, 0)
-        # last_right = right_lane_boundaries[-1] if right_lane_boundaries else (0, 0)
-        # print(f"Last Left: {last_left}, Last Right: {last_right}")
-        # if last_left[1] > last_right[1] and last_right[1] == 0:
-        #     # right is cut of on the top
-        #     left_start, right_start = self._get_starting_point(self.edge_mask, row=last_right[1])
-        #     print(f"New Start Points: Left: {left_start}, Right: {right_start}")
-        #     if left_start is not None:
-        #         right_lane_boundaries += self._track_right_lane(left_start)
-
-        # self.debug_image = self.overlay_image
-        # self.debug_image = self.first_image
-        self.debug_image = self.ordered_points
-
-        # (Phase 5: Funktionsanpassung, Mathematische Darstellung der Fahrspuren)
+        self.debug_image = self.overlay_image
 
         return left_lane_boundaries, right_lane_boundaries

@@ -20,9 +20,13 @@ Das Projekt ist wie folgt zu strukturieren:
 
 ```python
 working-dir/
+| - data/ # Bilder zu getesteten Varianten der Spurerkennung und Pfadplanung
+| - docs/ # Aufgabenstellung, Bewertung, Abschlusspräsentation, Quellen
 | - .gitignore # Definition von Dateien, die nicht von git getrackt werden sollen
 | - car.py # Beschreibt das Fahrzeug und enthält die gesamte Pipeline
+| - CHANGES.md # Wichtige Designentscheidungen
 | - env_wrapper.py # Wrapper für die Gymnasium Car Racing Simulation
+| - FINDINGS.md # Erkenntnisse über Simulation, Fahrzeug und Kamera
 | - geometry.py # Umrechnung Pixel -> Fahrzeugkoordinaten, Pfad und Krümmung für die Regler
 | - input_controller.py # Manuelle Steuerung des Fahrzeugs
 | - lane_detection.py # Modul zur Spurerkennung
@@ -30,6 +34,7 @@ working-dir/
 | - longitudinal_control.py # Modul zur Längsregelung
 | - main.py # Hauptdatei, die die Pipeline über 5 Iterationen ausführt
 | - path_planning.py # Modul zur Pfadplanung
+| - pyproject.toml # Abhängigkeiten
 | - README.md # Diese Datei
 | - test_installation.py # Testet die Installation
 | - test_lane_detection.py # Testet die Spurerkennung
@@ -37,6 +42,7 @@ working-dir/
 | - test_longitudinal_control.py # Testet die Längsregelung
 | - test_path_planning.py # Testet die Pfadplanung
 | - test_pipeline.py # Testet die gesamte Pipeline
+| - TODO.md # Aufgabenliste
 ```
 
 ## 3. Ausführung
@@ -185,10 +191,10 @@ Pro Simulationsschritt im Benchmark (8 Prozesse parallel), Budget bei 50 FPS sin
 
 | Modul | p50 | p95 | p99 |
 | ----- | --: | --: | --: |
-| Spurerkennung | 1,34 ms | 2,42 ms | 3,29 ms |
-| Pfadplanung | 1,33 ms | 2,57 ms | 3,36 ms |
-| Querregelung | 0,38 ms | 0,67 ms | 0,94 ms |
-| Längsregelung | 0,32 ms | 0,63 ms | 0,89 ms |
-| Gesamte Pipeline | 3,41 ms | 6,10 ms | 7,62 ms |
+| Spurerkennung | 0,87 ms | 1,33 ms | 1,72 ms |
+| Pfadplanung | 0,83 ms | 1,26 ms | 1,47 ms |
+| Querregelung | 0,24 ms | 0,33 ms | 0,38 ms |
+| Längsregelung | 0,20 ms | 0,29 ms | 0,35 ms |
+| Gesamte Pipeline | 2,14 ms | 3,14 ms | 3,65 ms |
 
-Das p99 liegt bei beiden Reglern unter 1 ms. Alle Berechnungen sind mit numpy vektorisiert, Schleifen über Pfadpunkte gibt es nicht.
+Der längste Schritt der gesamten Pipeline dauert 7,8 ms, das p99 liegt bei beiden Reglern unter 0,4 ms. Alle Berechnungen sind mit numpy vektorisiert, Schleifen über Pfadpunkte gibt es nicht.

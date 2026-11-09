@@ -202,9 +202,6 @@ speed, slip ratios and slip angles are numerically unstable.
 
 ## Project-Specific Findings
 
-- `Car.next_action` currently returns a constant action before the lane
-  detection, path planning, and control code below it. The autonomous pipeline
-  is therefore unreachable until that early return is removed.
 - `main.py` and `test_pipeline.py` use different execution paths. The test
   pipeline runs lane detection, planning, and control directly, while
   `main.py` currently uses `Car.next_action`.
