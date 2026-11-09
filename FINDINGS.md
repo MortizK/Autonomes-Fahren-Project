@@ -251,3 +251,12 @@ Measured on asphalt with short test runs (full gas, or constant brake from
   it after some steps, even below 0.9.
 - Full gas in a curve saturates the rear tires and the car spins. Gas has to
   be reduced by the lateral acceleration (friction circle).
+- With a fixed steering angle the car does not yaw on a straight
+  (0.002 rad/s). Any wobble comes from the control loop.
+- The detected centerline jumps by fractions of a pixel from frame to frame,
+  the whole path at once and not single points. Fitting a polynomial does not
+  remove it, filtering over time does.
+- The loop has at least two frames of delay (one camera frame, steering motor
+  with a time constant of 0.02 s and at most 3 rad/s). A heading correction
+  faster than that oscillates: classic Stanley at 80 units/s corrects in
+  0.04 s.
