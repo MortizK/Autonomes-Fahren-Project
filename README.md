@@ -78,20 +78,24 @@ Beide Regler rechnen nicht in Pixeln, sondern in Einheiten der Simulation, in ei
 Die Querregelung nutzt den **Stanley-Regler** an der Vorderachse:
 
 ```
-delta = psi + arctan(k * e / (k_soft + v)) + k_d * dpsi/dt
+delta = k_psi * psi + arctan(k * e / (k_soft + v)) + k_d * dpsi/dt
+k_psi = L / (L + v * tau)
 ```
 
 | Parameter | Standard | Bedeutung |
 | --------- | -------- | --------- |
 | `gain` | 1.0 | k, Gewicht der Querabweichung e (1/s) |
 | `softening` | 1.0 | k_soft, begrenzt die Verstärkung beim Anfahren (Einheiten/s) |
-| `damping` | 0.02 | k_d, D-Anteil auf den Kurswinkelfehler psi (s) |
+| `heading_time` | 0.1 | tau, kürzeste Zeit, in der der Kurswinkelfehler psi ausgeregelt wird (s) |
+| `damping` | 0.02 | k_d, D-Anteil auf psi (s) |
+| `damping_filter` | 0.1 | Zeitkonstante des Tiefpasses auf den D-Anteil (s) |
 | `preview` | 12.0 | Sehnenlänge, über die psi gemessen wird (Einheiten) |
 
 Erweiterungen gegenüber dem Standard-Stanley:
 
 - **Kurswinkel über eine Sehne**: Statt der Tangente am Lotfußpunkt wird die Richtung zum Pfadpunkt 12 Einheiten weiter genommen. Das glättet das Pixelrauschen und schneidet Kurven leicht an, dadurch sind höhere Kurvengeschwindigkeiten möglich.
-- **Dämpfung (D-Anteil)**: Die Änderung des Kurswinkelfehlers entspricht der Differenz aus Gierrate des Pfads und des Autos. Der Term dämpft das Aufschwingen bei hohem Tempo.
+- **Kurswinkel-Verstärkung sinkt mit dem Tempo**: Lenkt das Auto um psi, dreht es sich mit `v * psi / L`. Beim klassischen Stanley (k_psi = 1) wäre der Kurswinkel bei 80 Einheiten/s in 0,04 s ausgeregelt, schneller als die Verzögerung im Regelkreis (ein Frame Kamera, Lenkmotor). Das Auto schwingt dann mit den Frames hin und her. Mit `k_psi = L / (L + v * tau)` dauert das Ausregeln `tau + L / v`, also nie unter 0,1 s. Beim Anfahren bleibt k_psi nahe 1.
+- **Dämpfung (D-Anteil)**: Die Änderung des Kurswinkelfehlers entspricht der Differenz aus Gierrate des Pfads und des Autos. Der Term dämpft das Aufschwingen bei hohem Tempo. Ein Tiefpass (0,1 s) filtert das Pixelrauschen heraus, ungefiltert hat der D-Anteil das Rauschen der Spurerkennung verstärkt.
 - **Ausgabe in rad**: Die Lenkaktion ist in der Simulation der Soll-Radwinkel in rad (Anschlag ±0,4 rad). Der Regler gibt ihn deshalb direkt aus.
 - **Pfadaussetzer**: Ohne Pfad klingt der letzte Lenkwinkel pro Frame mit Faktor 0,9 ab. Kurze Aussetzer werden überbrückt, ohne dass das Auto dauerhaft eingelenkt bleibt.
 
@@ -144,8 +148,9 @@ Spurerkennung und Pfadplanung (Stand 23.10.) sind in allen Zeilen gleich, verän
 
 | Variante | Ø Score | Std | Min | Runden | Schritte/Runde | Offroad |
 | -------- | ------: | --: | --: | -----: | -------------: | ------: |
-| **Final**: Stanley (Sehne 12, Dämpfung), Zielgeschwindigkeit aus Krümmung | **925,5** | 7,5 | 903,2 | 50/50 | 746 | 0 |
-| Stanley ohne Dämpfung | 925,0 | 7,6 | 902,8 | 50/50 | 750 | 0 |
+| **Final**: Stanley (Sehne 12, k_psi mit dem Tempo, gefilterte Dämpfung), Zielgeschwindigkeit aus Krümmung | **926,5** | 7,5 | 904,6 | 50/50 | 735 | 0 |
+| Stanley mit k_psi = 1, ungefilterte Dämpfung (Stand 23.10.) | 925,5 | 7,5 | 903,2 | 50/50 | 746 | 0 |
+| Stanley mit k_psi = 1, ohne Dämpfung | 925,0 | 7,6 | 902,8 | 50/50 | 750 | 0 |
 | Pure Pursuit (`lookahead_gain` 0,25, wieder entfernt) | 926,7 | 7,7 | 902,9 | 50/50 | 733 | 0 |
 | `lateral_accel` 240 (alter Standard) | 735,7 | 343,3 | 51,1 | 37/50 | 735 | 6100 |
 | Klassischer Stanley (Tangente, ohne Dämpfung) | 380,8 | 256,9 | 40,9 | 1/50 | 768 | 18191 |
@@ -158,19 +163,33 @@ Offroad zählt Schritte, in denen alle vier Räder neben der Strecke sind.
 
 | Variante | Ø Score | Min | Runden | Offroad |
 | -------- | ------: | --: | -----: | ------: |
-| **Final** | **915,1** | 871,4 | 26/28 | 0 |
+| **Final** | **916,6** | 881,8 | 27/28 | 0 |
+| k_psi = 1, ungefilterte Dämpfung (Stand 23.10.) | 915,1 | 871,4 | 26/28 | 0 |
 | Pure Pursuit | 895,7 | 718,2 | 23/28 | 603 |
 | `lateral_accel` 240 (alter Standard) | 475,2 | -10,4 | 11/28 | 7927 |
 
-Die zwei fehlenden Runden beim finalen Stand sind lange Strecken, die im Zeitlimit von 1000 Schritten zu 97 % bzw. 99 % gefahren werden.
+Die fehlende Runde beim finalen Stand ist eine lange Strecke (Seed 2006), die im Zeitlimit von 1000 Schritten zu 98 % gefahren wird.
+
+### Wackeln auf Geraden (Seeds 1000-1049, komplette Pipeline)
+
+Gemessen nur auf Geraden. Hochfrequente Gierrate = Gierrate minus gleitender Mittelwert über 11 Frames, also nur das Zittern ab ~4,5 Hz.
+
+| Variante | Lenkänderung pro Frame | Vorzeichenwechsel der Lenkung | Hochfrequente Gierrate |
+| -------- | ---------------------: | ----------------------------: | ---------------------: |
+| **Final** | **0,005 rad** | **6,2 /s** | **0,09 rad/s** |
+| k_psi = 1, ungefilterte Dämpfung (Stand 23.10.) | 0,026 rad | 17,9 /s | 0,48 rad/s |
+
+Mit fester Lenkung giert das Auto auf der Geraden nicht (0,002 rad/s), das Wackeln entstand also im Regelkreis. Ursachen: Der Pfad der Spurerkennung springt von Frame zu Frame um Bruchteile eines Pixels, der ungefilterte D-Anteil hat das verstärkt, und k_psi = 1 regelt bei hohem Tempo schneller, als das Auto reagieren kann.
 
 Einordnung:
 
-- **Pipeline vs. Ground Truth**: Auf der Ground-Truth-Mittellinie erreichen die Regler auf denselben Seeds 926,0 statt 925,5. Die Regler kommen also mit dem Pixelrauschen der Spurerkennung zurecht.
+- **Pipeline vs. Ground Truth**: Auf der Ground-Truth-Mittellinie erreichen die Regler auf denselben Seeds 926,9 statt 926,5. Die Regler kommen also mit dem Pixelrauschen der Spurerkennung zurecht.
 - **Haarnadeln**: Mit `lateral_accel` 240 war das Auto in langen Kehren zu schnell, rutschte nach außen und drehte sich, sobald die Spurerkennung die Strecke verlor. Aufgefallen ist das erst, seit die Mittellinie in Kehren länger sichtbar ist. Vorher hat die kurze Sichtweite das Auto zufällig abgebremst.
 - **Sehne statt Tangente** ist der wichtigste Baustein. Die Tangente aus pixelgenauen Punkten rauscht so stark, dass der klassische Stanley mit derselben Längsregelung fast keine Runde schafft.
 - **Pure Pursuit** ist auf normalen Strecken etwa 1 Punkt schneller, weil es Kurven stärker schneidet. In Haarnadeln kommt es aber von der Strecke ab (5 von 28 Runden nicht geschafft). Bei zu kurzer Vorausschau (`lookahead_gain` 0,15) schaukelt es sich auf. Stanley ist robuster und bleibt deshalb als einziger Regler im Code.
-- **Dämpfung**: Auf den Abstimm-Seeds +0,6 Punkte und maximale Querabweichung 5,9 statt 7,5 Einheiten, auf den Test-Seeds kein messbarer Unterschied. Sie bleibt drin, weil sie nicht schadet.
+- **Dämpfung**: Mit der Ground-Truth-Mittellinie dämpft der D-Anteil das Zittern, mit der Pipeline hat er ungefiltert das Pixelrauschen verstärkt (doppelt so viel Lenkänderung pro Frame). Gefiltert bringt er beides: Ohne D-Anteil fehlen auf den Abstimm-Seeds 0,7 Punkte, in den Haarnadeln 1,3 Punkte (gemessen mit konstantem k_psi = 0,4).
+- **Kurswinkel-Verstärkung**: Je kleiner k_psi bei hohem Tempo, desto ruhiger und etwas schneller fährt das Auto, bis es kippt. Mit `tau` 0,1 s liegt k_psi bei 80 Einheiten/s bei 0,29. Mit `tau` ~0,2 s schafft das Auto viele Runden nicht mehr. Ein konstantes k_psi kippt schon bei 0,25, obwohl `tau` 0,13 s bei hohem Tempo etwa denselben Wert hat und noch fährt. Bei niedrigem Tempo braucht das Auto also die volle Verstärkung.
+- **Was nicht geholfen hat**: Polynom-Fits über den Pfad ändern am Zittern nichts, der Pfad springt als Ganzes und nicht in einzelnen Punkten. Ein Tiefpass auf die Lenkung kostet Punkte (0,05 s: −3,5 Punkte, Offroad), eine Begrenzung der Lenkrate auf 2 rad/s bringt das Auto in Kurven von der Strecke.
 - **Kammscher Kreis**: Ohne die Gasbegrenzung beim Lenken nur Ø 80 Punkte (Abstimm-Seeds), die Hinterräder brechen in fast jeder Kurve aus.
 - **Grenzen**: In rund 68 % der Schritte ist die Zielgeschwindigkeit das Höchsttempo, das Auto liegt dort im Mittel aber noch rund 20 Einheiten/s darunter. Der Motor ist der Engpass. Mehr Score bringt vor allem eine Ideallinie aus der Pfadplanung, die Kurvenradien vergrößert. Mit `--domain_randomize` ist die Pipeline noch nicht getestet.
 

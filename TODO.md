@@ -30,6 +30,7 @@
 - [x] Stanley control law with default parameters
 - [x] Map the steering angle onto the action (target wheel angle in rad, steering lock +/-0.4 rad)
 - [x] Damping similar to the D-term of a PID controller
+- [x] Stop the wobble on straights (heading gain lowered at speed, low-pass on the D-term)
 - [x] Edge cases: no or too few trajectory points, standstill, gaps in the trajectory
 - [x] Edge case: camera zoom during the first second
 - [x] Tune the parameters (`benchmark_control.py`, `test_lateral_control.py`)
