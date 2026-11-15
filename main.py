@@ -1,4 +1,5 @@
 import argparse
+import time
 
 import gymnasium as gym
 import numpy as np
@@ -11,6 +12,7 @@ def evaluate(env, eval_runs=50, eval_length=600):
     episode_rewards = []
     for episode in range(eval_runs):
 
+        start_time = time.time()
         seed = int(np.random.randint(0, int(1e6)))
         state_image, info = env.reset(seed=seed)
 
@@ -27,12 +29,15 @@ def evaluate(env, eval_runs=50, eval_length=600):
             if done or trunc:
                 break
 
+        time_elapsed = time.time() - start_time
+
         print(
             f"episode: {episode:02d}     "
             f"seed: {seed:06d}     "
             f"reward: {episode_rewards[-1]:06.2F}     "
             f"avg 5 reward: {np.mean(np.asarray(episode_rewards[-5:])):06.2f}     "
             f"avg reward: {np.mean(np.asarray(episode_rewards)):06.2f}     "
+            f"time: {time_elapsed:.2f}s     "
         )
 
     print("---------------------------")

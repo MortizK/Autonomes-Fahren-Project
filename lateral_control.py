@@ -16,7 +16,7 @@ class LateralControl:
 
     def __init__(
         self,
-        gain: float = 1.0,
+        gain: float = 0.7,
         softening: float = 1.0,
         heading_time: float = 0.1,
         damping: float = 0.02,

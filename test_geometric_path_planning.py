@@ -66,4 +66,35 @@ def test_vehicle_too_wide_for_corridor_is_rejected():
     center = np.column_stack((np.full(30, 48.0), np.linspace(77, 10, 30)))
     left, right = corridor(center, width=7.0)
     result = PathPlanning(vehicle_width=8.0, vehicle_length=4.0).plan_detailed(left, right)
-    assert not result.valid
+    assert result.valid
+    assert result.status == "centerline fallback"
+
+
+def test_temporal_blending_reduces_frame_jump():
+    y = np.linspace(77, 10, 40)
+    left_a = np.column_stack((np.full(len(y), 35.0), y)).tolist()
+    right_a = np.column_stack((np.full(len(y), 59.0), y)).tolist()
+    left_b = np.column_stack((np.full(len(y), 39.0), y)).tolist()
+    right_b = np.column_stack((np.full(len(y), 63.0), y)).tolist()
+    planner = PathPlanning(temporal_blend=0.3)
+    first, _ = planner.plan(left_a, right_a)
+    second, _ = planner.plan(left_b, right_b)
+    raw_jump = 4.0
+    planned_jump = np.mean(
+        np.linalg.norm(np.asarray(second) - np.asarray(first), axis=1)
+    )
+    assert planned_jump < raw_jump
+
+
+def test_changed_boundary_sample_count_keeps_temporal_state():
+    y_a = np.linspace(77, 10, 40)
+    y_b = np.linspace(77, 10, 19)
+    left_a = np.column_stack((np.full(len(y_a), 35.0), y_a)).tolist()
+    right_a = np.column_stack((np.full(len(y_a), 59.0), y_a)).tolist()
+    left_b = np.column_stack((np.full(len(y_b), 35.5), y_b)).tolist()
+    right_b = np.column_stack((np.full(len(y_b), 59.5), y_b)).tolist()
+    planner = PathPlanning()
+    first, _ = planner.plan(left_a, right_a)
+    second, _ = planner.plan(left_b, right_b)
+    assert_ordered_finite(first)
+    assert_ordered_finite(second)

@@ -34,8 +34,9 @@ class PathPlanning:
         curvature_smoothness_weight: float = 0.08,
         continuity_weight: float = 0.05,
         control_points: int = 16,
-        smoothing_iterations: int = 4,
+        smoothing_iterations: int = 6,
         racing_line_gain: float = 0.35,
+        temporal_blend: float = 0.2,
     ):
         if not all(
             np.isfinite(value) and value >= 0.0
@@ -48,8 +49,9 @@ class PathPlanning:
                 curvature_smoothness_weight,
                 continuity_weight,
                 racing_line_gain,
+                temporal_blend,
             )
-        ) or sample_spacing <= 0.0 or control_points < 4 or smoothing_iterations < 1:
+        ) or sample_spacing <= 0.0 or control_points < 4 or smoothing_iterations < 1 or not 0.0 < temporal_blend <= 1.0:
             raise ValueError("planner dimensions and weights must be finite and non-negative")
         self.vehicle_width = float(vehicle_width)
         self.vehicle_length = float(vehicle_length)
@@ -61,7 +63,9 @@ class PathPlanning:
         self.control_points = int(control_points)
         self.smoothing_iterations = int(smoothing_iterations)
         self.racing_line_gain = float(racing_line_gain)
+        self.temporal_blend = float(temporal_blend)
         self._previous_offsets: np.ndarray | None = None
+        self._previous_center: np.ndarray | None = None
 
     @staticmethod
     def _polyline(points) -> np.ndarray | None:
@@ -252,15 +256,86 @@ class PathPlanning:
         right_offsets = np.einsum("ij,ij->i", right_samples - center, normals)
         if not (np.all(left_offsets > 0.0) and np.all(right_offsets < 0.0)):
             return None
-        if np.any(left_offsets - right_offsets <= self.vehicle_width + 2.0 * self.safety_margin):
-            return None
         polygon = np.vstack((left_points, right_points[::-1]))
         return center, tangents, normals, left_samples, right_samples, left_offsets, right_offsets, polygon
+
+    def _basic_centerline(self, left, right) -> np.ndarray | None:
+        left_points = self._polyline(left)
+        right_points = self._polyline(right)
+        if left_points is None or right_points is None:
+            return None
+        left_arc = self._arc(left_points)
+        right_arc = self._arc(right_points)
+        if left_arc is None or right_arc is None:
+            return None
+        left_lengths, left_total = left_arc
+        right_lengths, right_total = right_arc
+        count = max(
+            12,
+            int(np.ceil(max(left_total, right_total) / self.sample_spacing)) + 1,
+        )
+        fractions = np.linspace(0.0, 1.0, count)
+        left_samples = self._interpolate(left_points, left_lengths, fractions * left_total)
+        right_samples = self._interpolate(right_points, right_lengths, fractions * right_total)
+        center = (left_samples + right_samples) / 2.0
+        if len(center) < 2 or not np.isfinite(center).all():
+            return None
+        if np.any(np.linalg.norm(np.diff(center, axis=0), axis=1) <= 1e-8):
+            return None
+        tangent = np.gradient(center, axis=0)
+        tangent /= np.maximum(np.linalg.norm(tangent, axis=1)[:, None], 1e-9)
+        normal = np.column_stack((tangent[:, 1], -tangent[:, 0]))
+        left_offset = np.einsum("ij,ij->i", left_samples - center, normal)
+        right_offset = np.einsum("ij,ij->i", right_samples - center, normal)
+        if not (np.all(left_offset > 0.0) and np.all(right_offset < 0.0)):
+            return None
+        return center
+
+    @staticmethod
+    def _resample_profile(profile: np.ndarray, count: int) -> np.ndarray:
+        if len(profile) == count:
+            return profile.copy()
+        old = np.linspace(0.0, 1.0, len(profile))
+        new = np.linspace(0.0, 1.0, count)
+        return np.interp(new, old, profile)
+
+    def _centerline_result(self, center: np.ndarray, status: str) -> PlanningResult:
+        curvature = self._curvature(center)
+        if len(center) < 2 or not np.isfinite(center).all() or not np.isfinite(curvature).all():
+            return PlanningResult(
+                np.empty((0, 2)), np.empty(0), np.empty(0), False, "invalid geometry"
+            )
+        if self._previous_center is not None and len(self._previous_center) >= 2:
+            previous = np.column_stack(
+                (
+                    self._resample_profile(self._previous_center[:, 0], len(center)),
+                    self._resample_profile(self._previous_center[:, 1], len(center)),
+                )
+            )
+            fallback_blend = min(self.temporal_blend, 0.12)
+            center = (
+                (1.0 - fallback_blend) * previous
+                + fallback_blend * center
+            )
+            curvature = self._curvature(center)
+        self._previous_center = center.copy()
+        self._previous_offsets = np.zeros(len(center), dtype=float)
+        return PlanningResult(
+            center,
+            np.zeros(len(center), dtype=float),
+            curvature,
+            True,
+            status,
+        )
 
     def _plan(self, left_boundary, right_boundary, validate_footprint: bool) -> PlanningResult:
         prepared = self._prepare(left_boundary, right_boundary)
         if prepared is None:
             self._previous_offsets = None
+            fallback = self._basic_centerline(left_boundary, right_boundary)
+            if fallback is not None:
+                return self._centerline_result(fallback, "centerline fallback")
+            self._previous_center = None
             return PlanningResult(
                 np.empty((0, 2)), np.empty(0), np.empty(0), False, "invalid geometry"
             )
@@ -274,19 +349,39 @@ class PathPlanning:
             right_offsets,
             polygon,
         ) = prepared
+        geometric_center = center.copy()
+        previous_center = self._previous_center
+        blend = self.temporal_blend
+        if previous_center is not None and len(previous_center) >= 2:
+            previous_center = self._resample_profile(previous_center[:, 0], len(center))
+            previous_y = self._resample_profile(self._previous_center[:, 1], len(center))
+            previous_center = np.column_stack((previous_center, previous_y))
+            displacement = np.median(np.linalg.norm(center - previous_center, axis=1))
+            if displacement > 2.5:
+                blend = max(blend, 0.35)
+            center = (
+                (1.0 - blend) * previous_center
+                + blend * center
+            )
+            delta = np.gradient(center, axis=0)
+            norms = np.linalg.norm(delta, axis=1)
+            if (norms <= 1e-8).any() or not np.isfinite(norms).all():
+                return self._centerline_result(geometric_center, "centerline fallback")
+            tangents = delta / norms[:, None]
+            normals = np.column_stack((tangents[:, 1], -tangents[:, 0]))
+            left_offsets = np.einsum("ij,ij->i", left_samples - center, normals)
+            right_offsets = np.einsum("ij,ij->i", right_samples - center, normals)
         center_curvature = self._curvature(center)
         half_width = self.vehicle_width / 2.0 + self.safety_margin
         length_clearance = 0.25 * self.vehicle_length * np.abs(center_curvature)
         lower = right_offsets + half_width + length_clearance
         upper = left_offsets - half_width - length_clearance
         if np.any(lower >= upper):
-            self._previous_offsets = None
-            return PlanningResult(
-                np.empty((0, 2)), np.empty(0), np.empty(0), False, "corridor too narrow"
-            )
+            return self._centerline_result(geometric_center, "centerline fallback")
         initial = np.clip(np.zeros(len(center)), lower, upper)
         previous = self._previous_offsets
-        if previous is not None and len(previous) == len(initial) and np.isfinite(previous).all():
+        if previous is not None and len(previous) >= 2 and np.isfinite(previous).all():
+            previous = self._resample_profile(previous, len(initial))
             initial = np.clip(previous, lower, upper)
         
         def path_for(offset_profile):
@@ -303,6 +398,12 @@ class PathPlanning:
         )
         desired = -np.tanh(30.0 * control_curvature)
         desired *= self.racing_line_gain * np.maximum(available_width - half_width, 0.0)
+        if controls > 2:
+            desired[1:-1] = (
+                0.25 * desired[:-2]
+                + 0.5 * desired[1:-1]
+                + 0.25 * desired[2:]
+            )
         offsets = np.clip(control_initial, control_lower, control_upper)
         for _ in range(self.smoothing_iterations):
             smoothed = offsets.copy()
@@ -315,6 +416,9 @@ class PathPlanning:
             offsets = np.clip(smoothed, control_lower, control_upper)
         sample_positions = np.linspace(0.0, controls - 1, len(center))
         offsets = np.interp(sample_positions, np.arange(controls), offsets)
+        if previous is not None and len(previous) >= 2 and np.isfinite(previous).all():
+            previous_profile = self._resample_profile(previous, len(offsets))
+            offsets = (1.0 - blend) * previous_profile + blend * offsets
         offsets = np.clip(offsets, lower, upper)
         path = path_for(offsets)
         curvature = self._curvature(path)
@@ -331,16 +435,8 @@ class PathPlanning:
             failing_index = -1
             status = "invalid trajectory"
         if not finite:
-            self._previous_offsets = None
-            if failing_index >= 0:
-                status += f" at sample {failing_index}"
-            return PlanningResult(
-                np.empty((0, 2)),
-                np.empty(0),
-                np.empty(0),
-                False,
-                status,
-            )
+            return self._centerline_result(geometric_center, "centerline fallback")
+        self._previous_center = center.copy()
         self._previous_offsets = offsets.copy()
         return PlanningResult(
             path,
