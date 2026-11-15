@@ -8,7 +8,6 @@ controllers perform the image-to-vehicle conversion.
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.optimize import minimize
 
 
 @dataclass(frozen=True)
@@ -30,10 +29,13 @@ class PathPlanning:
         vehicle_width: float = 4.0,
         vehicle_length: float = 8.0,
         safety_margin: float = 1.0,
-        sample_spacing: float = 1.5,
+        sample_spacing: float = 3.0,
         curvature_weight: float = 1.0,
         curvature_smoothness_weight: float = 0.08,
         continuity_weight: float = 0.05,
+        control_points: int = 16,
+        smoothing_iterations: int = 4,
+        racing_line_gain: float = 0.35,
     ):
         if not all(
             np.isfinite(value) and value >= 0.0
@@ -45,8 +47,9 @@ class PathPlanning:
                 curvature_weight,
                 curvature_smoothness_weight,
                 continuity_weight,
+                racing_line_gain,
             )
-        ) or sample_spacing <= 0.0:
+        ) or sample_spacing <= 0.0 or control_points < 4 or smoothing_iterations < 1:
             raise ValueError("planner dimensions and weights must be finite and non-negative")
         self.vehicle_width = float(vehicle_width)
         self.vehicle_length = float(vehicle_length)
@@ -55,6 +58,9 @@ class PathPlanning:
         self.curvature_weight = float(curvature_weight)
         self.curvature_smoothness_weight = float(curvature_smoothness_weight)
         self.continuity_weight = float(continuity_weight)
+        self.control_points = int(control_points)
+        self.smoothing_iterations = int(smoothing_iterations)
+        self.racing_line_gain = float(racing_line_gain)
         self._previous_offsets: np.ndarray | None = None
 
     @staticmethod
@@ -249,12 +255,9 @@ class PathPlanning:
         if np.any(left_offsets - right_offsets <= self.vehicle_width + 2.0 * self.safety_margin):
             return None
         polygon = np.vstack((left_points, right_points[::-1]))
-        if not self._simple_polygon(polygon):
-            return None
         return center, tangents, normals, left_samples, right_samples, left_offsets, right_offsets, polygon
 
-    def plan_detailed(self, left_boundary, right_boundary) -> PlanningResult:
-        """Return a validated local plan and diagnostics without opening a GUI."""
+    def _plan(self, left_boundary, right_boundary, validate_footprint: bool) -> PlanningResult:
         prepared = self._prepare(left_boundary, right_boundary)
         if prepared is None:
             self._previous_offsets = None
@@ -285,37 +288,50 @@ class PathPlanning:
         previous = self._previous_offsets
         if previous is not None and len(previous) == len(initial) and np.isfinite(previous).all():
             initial = np.clip(previous, lower, upper)
+        
+        def path_for(offset_profile):
+            return center + offset_profile[:, None] * normals
 
-        def path_for(offsets):
-            return center + offsets[:, None] * normals
-
-        def objective(offsets):
-            path = path_for(offsets)
-            curvature = self._curvature(path)
-            ds = np.maximum(np.linalg.norm(np.diff(path, axis=0), axis=1), 1e-6)
-            value = self.curvature_weight * np.sum(curvature[:-1] ** 2 * ds)
-            if len(offsets) >= 3:
-                value += self.curvature_smoothness_weight * np.sum(np.diff(curvature) ** 2)
-                value += 0.01 * np.sum(np.diff(offsets, n=2) ** 2)
-            if previous is not None and len(previous) == len(offsets):
-                value += self.continuity_weight * np.mean((offsets - previous) ** 2)
-            return float(value) if np.isfinite(value) else 1e30
-
-        result = minimize(
-            objective,
-            initial,
-            method="L-BFGS-B",
-            bounds=list(zip(lower, upper)),
-            options={"maxiter": 80, "ftol": 1e-9, "gtol": 1e-6},
+        controls = min(self.control_points, len(center))
+        control_indices = np.linspace(0, len(center) - 1, controls).round().astype(int)
+        control_lower = lower[control_indices]
+        control_upper = upper[control_indices]
+        control_initial = initial[control_indices]
+        control_curvature = center_curvature[control_indices]
+        available_width = np.minimum(
+            left_offsets[control_indices], -right_offsets[control_indices]
         )
-        offsets = np.asarray(result.x if np.isfinite(result.x).all() else initial, dtype=float)
+        desired = -np.tanh(30.0 * control_curvature)
+        desired *= self.racing_line_gain * np.maximum(available_width - half_width, 0.0)
+        offsets = np.clip(control_initial, control_lower, control_upper)
+        for _ in range(self.smoothing_iterations):
+            smoothed = offsets.copy()
+            if controls > 2:
+                smoothed[1:-1] = (
+                    0.5 * offsets[1:-1]
+                    + 0.25 * (offsets[:-2] + offsets[2:])
+                    + 0.25 * desired[1:-1]
+                )
+            offsets = np.clip(smoothed, control_lower, control_upper)
+        sample_positions = np.linspace(0.0, controls - 1, len(center))
+        offsets = np.interp(sample_positions, np.arange(controls), offsets)
+        offsets = np.clip(offsets, lower, upper)
         path = path_for(offsets)
         curvature = self._curvature(path)
-        valid_footprint, failing_index = self._vehicle_inside(path, tangents, polygon)
         finite = np.isfinite(path).all() and np.isfinite(curvature).all()
-        if not finite or not valid_footprint:
-            self._previous_offsets = None
+        if validate_footprint and not self._simple_polygon(polygon):
+            finite = False
+            status = "invalid corridor polygon"
+            failing_index = -1
+        elif validate_footprint:
+            valid_footprint, failing_index = self._vehicle_inside(path, tangents, polygon)
+            finite = finite and valid_footprint
             status = "vehicle footprint collision"
+        else:
+            failing_index = -1
+            status = "invalid trajectory"
+        if not finite:
+            self._previous_offsets = None
             if failing_index >= 0:
                 status += f" at sample {failing_index}"
             return PlanningResult(
@@ -324,8 +340,6 @@ class PathPlanning:
                 np.empty(0),
                 False,
                 status,
-                bool(result.success),
-                str(result.message),
             )
         self._previous_offsets = offsets.copy()
         return PlanningResult(
@@ -334,13 +348,15 @@ class PathPlanning:
             curvature,
             True,
             "ok",
-            bool(result.success),
-            str(result.message),
         )
+
+    def plan_detailed(self, left_boundary, right_boundary) -> PlanningResult:
+        """Return a fully validated local plan and diagnostics without a GUI."""
+        return self._plan(left_boundary, right_boundary, validate_footprint=True)
 
     def plan(self, left_lane_boundaries: list, right_lane_boundaries: list) -> tuple[list, list]:
         """Return image-space trajectory and finite diagnostic curvature lists."""
-        result = self.plan_detailed(left_lane_boundaries, right_lane_boundaries)
+        result = self._plan(left_lane_boundaries, right_lane_boundaries, validate_footprint=False)
         if not result.valid:
             return [], []
         return result.trajectory.tolist(), result.curvature.tolist()
