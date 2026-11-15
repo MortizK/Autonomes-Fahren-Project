@@ -2,7 +2,10 @@ import numpy as np
 
 
 class PathPlanning:
-    MAX_TRACK_WIDTH = 35.0
+    # Average Track Width measured in pixels
+    # Between 20.25 and 24.65 pixels
+    MAX_TRACK_WIDTH = 27.5
+    MIN_TRACK_WIDTH = 17.5
 
     def __init__(self):
         pass
@@ -11,57 +14,26 @@ class PathPlanning:
         self, longer_boundary: list, shorter_boundary: list
     ) -> list:
         centerline = []
+        widths = []
         shorter_points = np.asarray(shorter_boundary, dtype=float)
 
         for point in longer_boundary:
             point = np.asarray(point, dtype=float)
             distances = np.linalg.norm(shorter_points - point, axis=1)
-            valid_indices = np.flatnonzero(distances <= self.MAX_TRACK_WIDTH)
+            valid_indices = np.flatnonzero(
+                (distances <= self.MAX_TRACK_WIDTH)
+                & (distances >= self.MIN_TRACK_WIDTH)
+            )
             if valid_indices.size == 0:
                 continue
 
             nearest_index = valid_indices[np.argmin(distances[valid_indices])]
             midpoint = (point + shorter_points[nearest_index]) / 2.0
             centerline.append(midpoint.tolist())
+            widths.append(distances[nearest_index])
 
+        # print(f"Average track width: {np.mean(widths):.2f} pixels")
         return centerline
-
-    def calculate_curvature(self, line: list) -> list:
-        """
-        Calculate the curvature of a given line.
-
-        args:
-            line (list): A list of points representing the line.
-
-        returns:
-            curvature (list): The curvature of the line.
-        """
-        point_distance = 5
-
-        if len(line) < 1 + 2 * point_distance:
-            return []
-
-        curvature = []
-        for i in range(point_distance, len(line) - point_distance):
-            p1 = np.array(line[i - point_distance])
-            p2 = np.array(line[i])
-            p3 = np.array(line[i + point_distance])
-
-            # Calculate the radius of curvature using the three points
-            a = np.linalg.norm(p2 - p1)
-            b = np.linalg.norm(p3 - p2)
-            c = np.linalg.norm(p3 - p1)
-
-            if a == 0 or b == 0 or c == 0:
-                curvature.append(0)
-                continue
-
-            s = (a + b + c) / 2
-            area = np.sqrt(s * (s - a) * (s - b) * (s - c))
-            radius_of_curvature = (a * b * c) / (4 * area) if area != 0 else 0
-            curvature.append(radius_of_curvature)
-
-        return curvature
 
     def plan(self, left_lane_boundaries: list, right_lane_boundaries: list) -> tuple[list, list]:
         """
@@ -80,8 +52,16 @@ class PathPlanning:
         centerline = self.create_centerline(
             right_lane_boundaries, left_lane_boundaries
         )
-        curvature = self.calculate_curvature(centerline)
-        return centerline, curvature
+
+        # gap = 25
+        # smoothed_centerline = []
+        # for i in range(len(centerline) - gap):
+        #     p1 = np.array(centerline[i])
+        #     p2 = np.array(centerline[i + gap])
+        #     midpoint = (p1 + p2) / 2.0
+        #     smoothed_centerline.append(midpoint.tolist())
+
+        return centerline, []
 
 if __name__ == "__main__":
     # Example usage of the PathPlanning class

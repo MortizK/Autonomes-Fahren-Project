@@ -19,6 +19,8 @@ def run(env, input_controller: InputController):
     longitudinal_control = LongitudinalControl()
 
     seed = int(np.random.randint(0, int(1e6)))
+    seed = 721102
+    print(f"seed: {seed:06d}")
     state_image, info = env.reset(seed=seed)
     total_reward = 0.0
 
@@ -48,7 +50,11 @@ def run(env, input_controller: InputController):
                 cv_image[int(point[1]), int(point[0])] = [255, 255, 255]
 
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
-        cv_image = cv2.resize(cv_image, (cv_image.shape[1] * 6, cv_image.shape[0] * 6))
+        cv_image = cv2.resize(
+            cv_image,
+            np.asarray(state_image.shape[:2]) * 6,
+            interpolation=cv2.INTER_NEAREST,
+        )
         cv2.imshow("Car Racing - Pipeline", cv_image)
         cv2.waitKey(1)
 

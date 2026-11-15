@@ -14,6 +14,8 @@ def run(env, input_controller: InputController):
     lane_detection = LaneDetection()
 
     seed = int(np.random.randint(0, int(1e6)))
+    seed = 721102
+    print(f"seed: {seed:06d}")
     state_image, info = env.reset(seed=seed)
     total_reward = 0.0
 
