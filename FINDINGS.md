@@ -165,6 +165,13 @@ the corner is safer than braking while already using most lateral grip.
 | 373468 | 136.72 | Sharp U-Turn after long straight |
 | 693592 | 073.01 | Sharp U-Turn after long straight |
 
+Cause of the U-turn failures: with the new centerline the path stays visible
+through hairpins, so the target speed came from `lateral_accel = 240`, about
+52 units/s for a radius of 11. The tires only allow ~49 units/s, the car slid
+outwards, the lane detection lost the track and the car spun. With
+`lateral_accel = 220`: 180888 910.50, 373468 921.00, 693592 926.40,
+197453 910.00, all without leaving the track.
+
 Also, maybe we can Use the First Frame of the Simulation to estimate a path planning. As we can expect some Turns from the global view.
 
 ## Control and State Estimation
@@ -195,9 +202,6 @@ speed, slip ratios and slip angles are numerically unstable.
 
 ## Project-Specific Findings
 
-- `Car.next_action` currently returns a constant action before the lane
-  detection, path planning, and control code below it. The autonomous pipeline
-  is therefore unreachable until that early return is removed.
 - `main.py` and `test_pipeline.py` use different execution paths. The test
   pipeline runs lane detection, planning, and control directly, while
   `main.py` currently uses `Car.next_action`.
@@ -244,3 +248,12 @@ Measured on asphalt with short test runs (full gas, or constant brake from
   it after some steps, even below 0.9.
 - Full gas in a curve saturates the rear tires and the car spins. Gas has to
   be reduced by the lateral acceleration (friction circle).
+- With a fixed steering angle the car does not yaw on a straight
+  (0.002 rad/s). Any wobble comes from the control loop.
+- The detected centerline jumps by fractions of a pixel from frame to frame,
+  the whole path at once and not single points. Fitting a polynomial does not
+  remove it, filtering over time does.
+- The loop has at least two frames of delay (one camera frame, steering motor
+  with a time constant of 0.02 s and at most 3 rad/s). A heading correction
+  faster than that oscillates: classic Stanley at 80 units/s corrects in
+  0.04 s.

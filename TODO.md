@@ -30,9 +30,10 @@
 - [x] Stanley control law with default parameters
 - [x] Map the steering angle onto the action (target wheel angle in rad, steering lock +/-0.4 rad)
 - [x] Damping similar to the D-term of a PID controller
+- [x] Stop the wobble on straights (heading gain lowered at speed, low-pass on the D-term)
 - [x] Edge cases: no or too few trajectory points, standstill, gaps in the trajectory
 - [x] Edge case: camera zoom during the first second
-- [x] Tune the parameters (`benchmark_control.py`, `test_lateral_control.py`)
+- [x] Tune the parameters (benchmark over many seeds, `test_lateral_control.py`)
 - [x] Optional: Pure Pursuit as alternative and compare both (Stanley more robust, Pure Pursuit removed again)
 - [ ] Check the test with `--domain_randomize` once the lane detection supports it
 - [x] Performance Analysis (Real Time?, how many ms?)
@@ -54,7 +55,9 @@
 
 ## Before Submission
 
-- [ ] Remove `benchmark_control.py`, it is only for testing and tuning the controllers (also remove it from the README: file structure and section 9)
+- [x] Remove `benchmark_control.py`, it is only for testing and tuning the controllers (also remove it from the README: file structure and section 9)
+- [x] Restore `main.py` to the original (no debug window, telemetry or fixed seeds)
+- [x] Remove tuning tools and debug leftovers (`test_control.py`, color analysis, pace-notes experiment, fixed test seeds)
 
 ## Pipeline
 

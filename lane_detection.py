@@ -85,7 +85,6 @@ class LaneDetection:
 
         # Phase 2: Lane Detection
         self.edge_mask = self._detect_edges(self.road_mask)
-        # self.debug_image = self.edge_mask
 
         self.debug_image = observation.copy()
         for (y, x) in np.argwhere(self.edge_mask > 0):
