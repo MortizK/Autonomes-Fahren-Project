@@ -1,81 +1,346 @@
+"""Local, vehicle-aware geometric racing-line planning.
+
+The public :meth:`PathPlanning.plan` adapter intentionally remains compatible
+with the original pipeline.  All geometry stays in image coordinates; the
+controllers perform the image-to-vehicle conversion.
+"""
+
+from dataclasses import dataclass
+
 import numpy as np
+from scipy.optimize import minimize
+
+
+@dataclass(frozen=True)
+class PlanningResult:
+    trajectory: np.ndarray
+    offsets: np.ndarray
+    curvature: np.ndarray
+    valid: bool
+    status: str
+    optimizer_success: bool = False
+    optimizer_message: str = ""
 
 
 class PathPlanning:
-    # Average Track Width measured in pixels
-    # Between 20.25 and 24.65 pixels
-    MAX_TRACK_WIDTH = 27.5
-    MIN_TRACK_WIDTH = 17.5
+    """Plan a smooth local racing line inside two ordered image polylines."""
 
-    def __init__(self):
-        pass
-
-    def create_centerline(
-        self, longer_boundary: list, shorter_boundary: list
-    ) -> list:
-        centerline = []
-        widths = []
-        shorter_points = np.asarray(shorter_boundary, dtype=float)
-
-        for point in longer_boundary:
-            point = np.asarray(point, dtype=float)
-            distances = np.linalg.norm(shorter_points - point, axis=1)
-            valid_indices = np.flatnonzero(
-                (distances <= self.MAX_TRACK_WIDTH)
-                & (distances >= self.MIN_TRACK_WIDTH)
+    def __init__(
+        self,
+        vehicle_width: float = 4.0,
+        vehicle_length: float = 8.0,
+        safety_margin: float = 1.0,
+        sample_spacing: float = 1.5,
+        curvature_weight: float = 1.0,
+        curvature_smoothness_weight: float = 0.08,
+        continuity_weight: float = 0.05,
+    ):
+        if not all(
+            np.isfinite(value) and value >= 0.0
+            for value in (
+                vehicle_width,
+                vehicle_length,
+                safety_margin,
+                sample_spacing,
+                curvature_weight,
+                curvature_smoothness_weight,
+                continuity_weight,
             )
-            if valid_indices.size == 0:
+        ) or sample_spacing <= 0.0:
+            raise ValueError("planner dimensions and weights must be finite and non-negative")
+        self.vehicle_width = float(vehicle_width)
+        self.vehicle_length = float(vehicle_length)
+        self.safety_margin = float(safety_margin)
+        self.sample_spacing = float(sample_spacing)
+        self.curvature_weight = float(curvature_weight)
+        self.curvature_smoothness_weight = float(curvature_smoothness_weight)
+        self.continuity_weight = float(continuity_weight)
+        self._previous_offsets: np.ndarray | None = None
+
+    @staticmethod
+    def _polyline(points) -> np.ndarray | None:
+        try:
+            array = np.asarray(points, dtype=float)
+        except (TypeError, ValueError):
+            return None
+        if array.ndim != 2 or array.shape[1] != 2 or len(array) < 2:
+            return None
+        if not np.isfinite(array).all():
+            return None
+        keep = np.r_[True, np.linalg.norm(np.diff(array, axis=0), axis=1) > 1e-9]
+        array = array[keep]
+        return array if len(array) >= 2 else None
+
+    @staticmethod
+    def _arc(points: np.ndarray) -> tuple[np.ndarray, float] | None:
+        lengths = np.linalg.norm(np.diff(points, axis=0), axis=1)
+        if not np.isfinite(lengths).all() or lengths.sum() <= 1e-9:
+            return None
+        return np.r_[0.0, np.cumsum(lengths)], float(lengths.sum())
+
+    @staticmethod
+    def _interpolate(points: np.ndarray, arc: np.ndarray, values: np.ndarray) -> np.ndarray:
+        return np.column_stack(
+            [np.interp(values, arc, points[:, axis]) for axis in range(2)]
+        )
+
+    @staticmethod
+    def _curvature(path: np.ndarray) -> np.ndarray:
+        result = np.zeros(len(path), dtype=float)
+        if len(path) < 3:
+            return result
+        first = path[:-2]
+        middle = path[1:-1]
+        last = path[2:]
+        a = middle - first
+        b = last - middle
+        c = last - first
+        cross = a[:, 0] * b[:, 1] - a[:, 1] * b[:, 0]
+        denominator = (
+            np.linalg.norm(a, axis=1)
+            * np.linalg.norm(b, axis=1)
+            * np.linalg.norm(c, axis=1)
+        )
+        result[1:-1] = np.divide(
+            2.0 * cross,
+            denominator,
+            out=np.zeros_like(cross),
+            where=denominator > 1e-9,
+        )
+        if len(result) > 2:
+            result[0] = result[1]
+            result[-1] = result[-2]
+        return result
+
+    @staticmethod
+    def _segments_intersect(a, b, c, d) -> bool:
+        def orient(p, q, r):
+            value = np.cross(q - p, r - p)
+            return float(value)
+
+        eps = 1e-8
+        ab_c = orient(a, b, c)
+        ab_d = orient(a, b, d)
+        cd_a = orient(c, d, a)
+        cd_b = orient(c, d, b)
+        if (
+            max(min(a[0], b[0]), min(c[0], d[0]))
+            > min(max(a[0], b[0]), max(c[0], d[0])) + eps
+            or max(min(a[1], b[1]), min(c[1], d[1]))
+            > min(max(a[1], b[1]), max(c[1], d[1])) + eps
+        ):
+            return False
+        return (ab_c * ab_d <= eps) and (cd_a * cd_b <= eps)
+
+    @classmethod
+    def _simple_polygon(cls, polygon: np.ndarray) -> bool:
+        if len(polygon) < 4:
+            return False
+        segments = list(zip(polygon, np.roll(polygon, -1, axis=0)))
+        for i, (a, b) in enumerate(segments):
+            for j in range(i + 1, len(segments)):
+                if j in (i - 1, i + 1) or (i == 0 and j == len(segments) - 1):
+                    continue
+                if cls._segments_intersect(a, b, *segments[j]):
+                    return False
+        return True
+
+    @staticmethod
+    def _inside(points: np.ndarray, polygon: np.ndarray) -> np.ndarray:
+        x = points[:, 0]
+        y = points[:, 1]
+        inside = np.zeros(len(points), dtype=bool)
+        on_boundary = np.zeros(len(points), dtype=bool)
+        for start, end in zip(polygon, np.roll(polygon, -1, axis=0)):
+            crosses = (start[1] > y) != (end[1] > y)
+            denominator = end[1] - start[1]
+            safe_denominator = denominator if abs(denominator) > 1e-12 else 1e-12
+            crossing_x = (end[0] - start[0]) * (y - start[1]) / safe_denominator + start[0]
+            inside ^= crosses & (x < crossing_x)
+            segment = end - start
+            length_squared = float(np.dot(segment, segment))
+            if length_squared > 1e-12:
+                projection = np.clip(
+                    ((points - start) @ segment) / length_squared, 0.0, 1.0
+                )
+                distance = np.linalg.norm(points - (start + projection[:, None] * segment), axis=1)
+                on_boundary |= distance <= 1e-7
+        return inside | on_boundary
+
+    def _vehicle_inside(
+        self, path: np.ndarray, tangents: np.ndarray, polygon: np.ndarray
+    ) -> tuple[bool, int]:
+        half_width = self.vehicle_width / 2.0 + self.safety_margin
+        half_length = self.vehicle_length / 2.0
+        path_arc = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(path, axis=0), axis=1))]
+        total_length = path_arc[-1]
+        spacing = max(float(np.median(np.diff(path_arc))), 1e-6)
+        endpoint_samples = int(np.ceil(half_length / spacing))
+        for index, (point, tangent) in enumerate(zip(path[1:], tangents[1:]), start=1):
+            if index <= endpoint_samples or index >= len(path) - endpoint_samples - 1:
                 continue
+            lateral = np.array([-tangent[1], tangent[0]])
+            backward = min(half_length, path_arc[index])
+            forward = min(half_length, total_length - path_arc[index])
+            if backward + forward <= 1e-9:
+                continue
+            longitudinal = (-backward, forward)
+            corners = np.array(
+                [
+                    point + longitudinal[1] * tangent + half_width * lateral,
+                    point + longitudinal[1] * tangent - half_width * lateral,
+                    point + longitudinal[0] * tangent - half_width * lateral,
+                    point + longitudinal[0] * tangent + half_width * lateral,
+                ]
+            )
+            samples = np.vstack(
+                [
+                    corners,
+                    (corners + np.roll(corners, -1, axis=0)) / 2.0,
+                ]
+            )
+            if not self._inside(samples, polygon).all():
+                return False, index
+            if index:
+                previous = path[index - 1]
+                for fraction in (0.25, 0.5, 0.75):
+                    intermediate = previous * (1.0 - fraction) + point * fraction
+                    if not self._inside(intermediate[None], polygon)[0]:
+                        return False, index
+        return True, -1
 
-            nearest_index = valid_indices[np.argmin(distances[valid_indices])]
-            midpoint = (point + shorter_points[nearest_index]) / 2.0
-            centerline.append(midpoint.tolist())
-            widths.append(distances[nearest_index])
+    def _prepare(self, left, right):
+        left_points = self._polyline(left)
+        right_points = self._polyline(right)
+        if left_points is None or right_points is None:
+            return None
+        left_arc = self._arc(left_points)
+        right_arc = self._arc(right_points)
+        if left_arc is None or right_arc is None:
+            return None
+        left_lengths, left_total = left_arc
+        right_lengths, right_total = right_arc
+        count = max(12, int(np.ceil(max(left_total, right_total) / self.sample_spacing)) + 1)
+        fractions = np.linspace(0.0, 1.0, count)
+        left_samples = self._interpolate(left_points, left_lengths, fractions * left_total)
+        right_samples = self._interpolate(right_points, right_lengths, fractions * right_total)
+        center = (left_samples + right_samples) / 2.0
+        center_arc = self._arc(center)
+        if center_arc is None:
+            return None
+        center_lengths, center_total = center_arc
+        if center_total < self.sample_spacing * 2.0:
+            return None
+        count = max(12, int(np.floor(center_total / self.sample_spacing)) + 1)
+        values = np.linspace(0.0, center_total, count)
+        center = self._interpolate(center, center_lengths, values)
+        left_samples = self._interpolate(left_samples, center_lengths, values)
+        right_samples = self._interpolate(right_samples, center_lengths, values)
+        delta = np.gradient(center, axis=0)
+        norms = np.linalg.norm(delta, axis=1)
+        if (norms <= 1e-8).any():
+            return None
+        tangents = delta / norms[:, None]
+        normals = np.column_stack((tangents[:, 1], -tangents[:, 0]))
+        left_offsets = np.einsum("ij,ij->i", left_samples - center, normals)
+        right_offsets = np.einsum("ij,ij->i", right_samples - center, normals)
+        if not (np.all(left_offsets > 0.0) and np.all(right_offsets < 0.0)):
+            return None
+        if np.any(left_offsets - right_offsets <= self.vehicle_width + 2.0 * self.safety_margin):
+            return None
+        polygon = np.vstack((left_points, right_points[::-1]))
+        if not self._simple_polygon(polygon):
+            return None
+        return center, tangents, normals, left_samples, right_samples, left_offsets, right_offsets, polygon
 
-        # print(f"Average track width: {np.mean(widths):.2f} pixels")
-        return centerline
+    def plan_detailed(self, left_boundary, right_boundary) -> PlanningResult:
+        """Return a validated local plan and diagnostics without opening a GUI."""
+        prepared = self._prepare(left_boundary, right_boundary)
+        if prepared is None:
+            self._previous_offsets = None
+            return PlanningResult(
+                np.empty((0, 2)), np.empty(0), np.empty(0), False, "invalid geometry"
+            )
+        (
+            center,
+            tangents,
+            normals,
+            left_samples,
+            right_samples,
+            left_offsets,
+            right_offsets,
+            polygon,
+        ) = prepared
+        center_curvature = self._curvature(center)
+        half_width = self.vehicle_width / 2.0 + self.safety_margin
+        length_clearance = 0.25 * self.vehicle_length * np.abs(center_curvature)
+        lower = right_offsets + half_width + length_clearance
+        upper = left_offsets - half_width - length_clearance
+        if np.any(lower >= upper):
+            self._previous_offsets = None
+            return PlanningResult(
+                np.empty((0, 2)), np.empty(0), np.empty(0), False, "corridor too narrow"
+            )
+        initial = np.clip(np.zeros(len(center)), lower, upper)
+        previous = self._previous_offsets
+        if previous is not None and len(previous) == len(initial) and np.isfinite(previous).all():
+            initial = np.clip(previous, lower, upper)
+
+        def path_for(offsets):
+            return center + offsets[:, None] * normals
+
+        def objective(offsets):
+            path = path_for(offsets)
+            curvature = self._curvature(path)
+            ds = np.maximum(np.linalg.norm(np.diff(path, axis=0), axis=1), 1e-6)
+            value = self.curvature_weight * np.sum(curvature[:-1] ** 2 * ds)
+            if len(offsets) >= 3:
+                value += self.curvature_smoothness_weight * np.sum(np.diff(curvature) ** 2)
+                value += 0.01 * np.sum(np.diff(offsets, n=2) ** 2)
+            if previous is not None and len(previous) == len(offsets):
+                value += self.continuity_weight * np.mean((offsets - previous) ** 2)
+            return float(value) if np.isfinite(value) else 1e30
+
+        result = minimize(
+            objective,
+            initial,
+            method="L-BFGS-B",
+            bounds=list(zip(lower, upper)),
+            options={"maxiter": 80, "ftol": 1e-9, "gtol": 1e-6},
+        )
+        offsets = np.asarray(result.x if np.isfinite(result.x).all() else initial, dtype=float)
+        path = path_for(offsets)
+        curvature = self._curvature(path)
+        valid_footprint, failing_index = self._vehicle_inside(path, tangents, polygon)
+        finite = np.isfinite(path).all() and np.isfinite(curvature).all()
+        if not finite or not valid_footprint:
+            self._previous_offsets = None
+            status = "vehicle footprint collision"
+            if failing_index >= 0:
+                status += f" at sample {failing_index}"
+            return PlanningResult(
+                np.empty((0, 2)),
+                np.empty(0),
+                np.empty(0),
+                False,
+                status,
+                bool(result.success),
+                str(result.message),
+            )
+        self._previous_offsets = offsets.copy()
+        return PlanningResult(
+            path,
+            offsets,
+            curvature,
+            True,
+            "ok",
+            bool(result.success),
+            str(result.message),
+        )
 
     def plan(self, left_lane_boundaries: list, right_lane_boundaries: list) -> tuple[list, list]:
-        """
-        Plan the trajectory based on the closest midpoint of both lane boundaries.
-        """
-        if len(left_lane_boundaries) == 0 or len(right_lane_boundaries) == 0:
+        """Return image-space trajectory and finite diagnostic curvature lists."""
+        result = self.plan_detailed(left_lane_boundaries, right_lane_boundaries)
+        if not result.valid:
             return [], []
-
-        distance = np.linalg.norm(
-            np.asarray(left_lane_boundaries[0])
-            - np.asarray(right_lane_boundaries[0])
-        )
-        if distance < 15.0:
-            return [], []
-
-        centerline = self.create_centerline(
-            right_lane_boundaries, left_lane_boundaries
-        )
-
-        # gap = 25
-        # smoothed_centerline = []
-        # for i in range(len(centerline) - gap):
-        #     p1 = np.array(centerline[i])
-        #     p2 = np.array(centerline[i + gap])
-        #     midpoint = (p1 + p2) / 2.0
-        #     smoothed_centerline.append(midpoint.tolist())
-
-        return centerline, []
-
-if __name__ == "__main__":
-    # Example usage of the PathPlanning class
-    path_planning = PathPlanning()
-
-    # Example lane boundaries (straight)
-    left_lane_boundaries = [[36, 77], [36, 76], [36, 75], [36, 74], [36, 73], [36, 72], [36, 71], [36, 70], [36, 69], [36, 68], [36, 67], [36, 66], [36, 65], [36, 64], [36, 63], [36, 62], [36, 61], [36, 60], [36, 59], [36, 58], [36, 57], [36, 56], [36, 55], [36, 54], [36, 53], [36, 52], [36, 51], [36, 50], [36, 49], [36, 48], [36, 47], [36, 46], [36, 45], [36, 44], [36, 43], [36, 42], [36, 41], [36, 40], [36, 39], [36, 38], [36, 37], [36, 36], [36, 35], [36, 34], [36, 33], [36, 32], [36, 31], [36, 30], [36, 29], [36, 28], [36, 27], [36, 26], [36, 25], [36, 24], [36, 23], [36, 22], [36, 21], [36, 20], [36, 19], [36, 18], [36, 17], [36, 16], [36, 15], [36, 14], [36, 13], [36, 12], [36, 11], [36, 10], [36, 9], [36, 8], [36, 7], [36, 6], [36, 5], [36, 4], [36, 3], [36, 2], [36, 1], [36, 0]]
-    right_lane_boundaries = [[57, 77], [57, 76], [57, 75], [57, 74], [57, 73], [57, 72], [57, 71], [57, 70], [57, 69], [57, 68], [57, 67], [57, 66], [57, 65], [57, 64], [57, 63], [57, 62], [57, 61], [57, 60], [57, 59], [57, 58], [57, 57], [57, 56], [57, 55], [57, 54], [58, 53], [58, 52], [58, 51], [57, 50], [57, 49], [57, 48], [57, 47], [57, 46], [57, 45], [57, 44], [57, 43], [57, 42], [58, 41], [58, 40], [58, 39], [58, 38], [58, 37], [58, 36], [58, 35], [58, 34], [58, 33], [58, 32], [58, 31], [58, 30], [58, 29], [58, 28], [58, 27], [58, 26], [58, 25], [58, 24], [58, 23], [58, 22], [58, 21], [58, 20], [58, 19], [58, 18], [58, 17], [58, 16], [58, 15], [58, 14], [58, 13], [58, 12], [58, 11], [58, 10], [58, 9], [58, 8], [58, 7], [58, 6], [58, 5], [58, 4], [58, 3], [58, 2], [58, 1], [58, 0]]
-
-    # Example lane boundaries (curved)
-    left_lane_boundaries = [[36, 77], [36, 76], [36, 75], [36, 74], [36, 73], [36, 72], [36, 71], [36, 70], [36, 69], [36, 68], [36, 67], [36, 66], [36, 65], [36, 64], [36, 63], [36, 62], [36, 61], [36, 60], [36, 59], [36, 58], [36, 57], [36, 56], [36, 55], [36, 54], [36, 53], [36, 52], [36, 51], [36, 50], [36, 49], [37, 48], [36, 47], [36, 46], [36, 45], [36, 44], [35, 43], [34, 42], [33, 41], [32, 40], [31, 40], [30, 39], [29, 38], [28, 37], [27, 37], [26, 36], [25, 35], [24, 34], [23, 34], [22, 33], [21, 32], [20, 32], [19, 31], [18, 30], [17, 29], [16, 29], [15, 28], [14, 27], [13, 27], [12, 26], [11, 25], [10, 25], [9, 24], [8, 23], [7, 22], [6, 22], [5, 21], [4, 20], [3, 20], [2, 19], [1, 18], [0, 17]]
-    right_lane_boundaries = [[58, 77], [58, 76], [58, 75], [58, 74], [58, 73], [58, 72], [58, 71], [58, 70], [58, 69], [58, 68], [58, 67], [58, 66], [58, 65], [58, 64], [58, 63], [58, 62], [58, 61], [58, 60], [58, 59], [58, 58], [58, 57], [58, 56], [58, 55], [58, 54], [58, 53], [58, 52], [58, 51], [58, 50], [58, 49], [58, 48], [58, 47], [58, 46], [58, 45], [58, 44], [58, 43], [57, 42], [57, 41], [57, 40], [57, 39], [56, 38], [56, 37], [56, 36], [56, 35], [55, 34], [55, 33], [55, 32], [54, 31], [53, 30], [53, 29], [52, 28], [52, 27], [51, 26], [51, 25], [50, 24], [49, 23], [48, 22], [47, 21], [46, 20], [45, 19], [44, 18], [43, 18], [42, 17], [41, 16], [40, 15], [39, 14], [38, 14], [37, 13], [36, 12], [35, 12], [34, 11], [33, 10], [32, 9], [31, 9], [30, 8], [29, 7], [28, 7], [27, 6], [26, 5], [25, 4], [24, 4], [23, 3], [22, 2], [21, 2], [20, 1], [19, 0]]
-
-    centerline, curvature = path_planning.plan(left_lane_boundaries, right_lane_boundaries)
-
-    print("Planned Centerline:", centerline)
-    print("Curvature:", curvature)
+        return result.trajectory.tolist(), result.curvature.tolist()
