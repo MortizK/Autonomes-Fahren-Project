@@ -169,7 +169,7 @@ class LaneDetection:
         self.frame += 1
 
         # Phase 1: Preprocessing
-        self.cut_image = observation[0:84, 0:98]   # Cut the image
+        self.cut_image = observation[0:84, 0:98].copy() # Cut the image
         self.cut_image[geo.CAR_Y_PX-6:geo.CAR_Y_PX+5, geo.CAR_X_PX-3:geo.CAR_X_PX+3] = self.threshold
         self.road_mask = self._create_road_mask(self.cut_image)
         # self.debug_image = self.road_mask.copy()
