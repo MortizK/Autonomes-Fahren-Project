@@ -1,54 +1,44 @@
 import numpy as np
 
+import geometry as geo
 
 class LaneDetection:
-    CAR_CENTER_X = 48
-    CAR_BOTTOM_Y = 77
     debug_image: np.ndarray
     road_mask: np.ndarray
     edge_mask: np.ndarray
 
-    def __init__(self):
+    def __init__(
+        self, 
+        threshold: list[int] = [145, 145, 145], 
+        max_color_diff: int = 5
+    ):
         self.debug_image = np.zeros((98, 98, 3), dtype=np.uint8)
         self.road_mask = np.zeros((84, 98), dtype=np.uint8)
         self.edge_mask = np.zeros((84, 98), dtype=np.uint8)
         self.frame = 0
-        self.threshold = [145, 145, 145]
+        self.threshold = threshold
+        self.max_color_diff = max_color_diff
 
     def _detectDomain(self, observation: np.ndarray):
         """
-        Detects the color space of the domain (road, grass, etc.) and sets the appropriate rgb thresholds for the lane detection algorithm.
+        Detects the color of the road in the given Domain
         """
         # Get the average color of the road in the bottom row of the image
-        road_color = observation[self.CAR_BOTTOM_Y-20:self.CAR_BOTTOM_Y-10, self.CAR_CENTER_X, :].mean(axis=0)
+        road_color = observation[geo.CAR_Y_PX-25:geo.CAR_Y_PX-15, geo.CAR_X_PX, :].mean(axis=0)
         self.threshold = road_color
-        print(f"road_color: {road_color}")
-
-        # find most common color in the image
-        # min_count = 50
-        # colors, counts = np.unique(observation.reshape(-1, 3), axis=0, return_counts=True)
-        # colors = colors[counts > min_count]
-        # counts = counts[counts > min_count]
-        # distances = np.linalg.norm(colors - road_color, axis=1)
-        # for color, count, distance in zip(colors, counts, distances):
-        #     print(f"color: {color} \tcount: {count} \tdistance: {distance}")
 
     def _create_road_mask(self, frame: np.ndarray) -> np.ndarray:
         """
-        Finds pixels, which are to bright or to colorful, as these pixels must not be part of the road.
-
-        This function is environment specific and may need to be adjusted if the environment changes. (for example if the environment has a different colored track)
+        This function uses the color of the road to create a binary mask of the road.
 
         returns:
             road_mask (np.ndarray): A binary mask where road pixels are 255 and non-road pixels are 0.
         """
-        LIMIT = 5
-
         red = frame[..., 0].astype(np.int16)
         green = frame[..., 1].astype(np.int16)
         blue = frame[..., 2].astype(np.int16)
 
-        is_road = (abs(green - self.threshold[1]) < LIMIT) & (abs(red - self.threshold[0]) < LIMIT) & (abs(blue - self.threshold[2]) < LIMIT)
+        is_road = (abs(green - self.threshold[1]) < self.max_color_diff) & (abs(red - self.threshold[0]) < self.max_color_diff) & (abs(blue - self.threshold[2]) < self.max_color_diff)
 
         return is_road.astype(np.uint8) * 255
 
@@ -90,7 +80,7 @@ class LaneDetection:
             # Find the next point on the left lane boundary
             # The lane may do a 180 Turn, so we need to check the surrounding pixels
             last_x, last_y = lane_boundaries[-1]
-            for dy in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:   # First check the pixels upwards, then the pixels in the same row, then the pixels downwards
                 for dx in [-1, 0, 1]:
                     new_x = last_x + dx
                     new_y = last_y + dy
@@ -98,7 +88,7 @@ class LaneDetection:
                         0 <= new_x < edge_mask.shape[1]
                         and 0 <= new_y < edge_mask.shape[0]
                         and edge_mask[new_y, new_x] > 0
-                        and (new_x, new_y) not in lane_boundaries
+                        and (new_x, new_y) not in lane_boundaries   # Avoid creating loops
                     ):
                         lane_boundaries.append((new_x, new_y))
                         break
@@ -109,13 +99,12 @@ class LaneDetection:
                 break   # If we did not find a new point, we are done
         return lane_boundaries
 
-    def _get_starting_point(self, edge_mask: np.ndarray, row=77) -> tuple[tuple[int, int], tuple[int, int]]:
+    def _get_starting_point(self, edge_mask: np.ndarray) -> tuple[tuple[int, int], tuple[int, int]]:
         """
         Finds the starting points for the left and right lane boundaries. In multiple cases:
 
         1. If there are only two white pixels, they must be the starting points for the left and right lane boundaries.
-        2. If the car is on the road, find the closest white pixel to the left and right of the car.
-        3. If the car is not on the road, return None for both starting points (Currently, we do not handle this case, as we assume the car is always on the road).
+        2. Else, find the closest white pixel to the left and right of the car.
 
         returns:
             left_start (tuple): The starting point for the left lane boundary.
@@ -124,45 +113,43 @@ class LaneDetection:
         left_start = None
         right_start = None
 
+        row = geo.CAR_Y_PX + 8  # Starting Points just below the car, to avoid detecting the car as a lane boundary
         white_cols = np.where(edge_mask[row, :] > 0)[0]
 
         if len(white_cols) == 2:
             left_start = (white_cols[0], row)
             right_start = (white_cols[1], row)
-        elif self.road_mask[row, self.CAR_CENTER_X] == 255:
-            # If the car is on the road, find the closest white pixel to the left and right of the car
-            on_the_left = white_cols[white_cols < self.CAR_CENTER_X]
-            on_the_right = white_cols[white_cols > self.CAR_CENTER_X]
+        elif len(white_cols) > 2:
+            # Find the closest white pixel to the left and right of the car
+            on_the_left = white_cols[white_cols < geo.CAR_X_PX]
+            on_the_right = white_cols[white_cols > geo.CAR_X_PX]
 
             # Start with the closest white pixel to the left of the car for the left lane
             left_start = None if len(on_the_left) == 0 else (on_the_left[-1], row)
 
             # Start with the closest white pixel to the right of the car for the right lane
             right_start = None if len(on_the_right) == 0 else (on_the_right[0], row)
-        else:
-            # TODO: Do we need behavior for when the car is not on the road? For now, we will just return empty lists.
-            left_start = None
-            right_start = None
 
         return left_start, right_start
 
-    def _track_left_lane(self, left_start: tuple[int, int]) -> list[tuple[int, int]]:
-            left_lane_boundaries = self._follow_lane(left_start, self.edge_mask)
+    def _track_lane(self, start: tuple[int, int], is_left_lane: bool) -> list[tuple[int, int]]:
+        """
+        Tracks the lane boundary starting from a given point and draw the lane boundary on the debug image.
+        """
+        lane_boundaries = self._follow_lane(start, self.edge_mask)
 
-            # draw the left lane boundaries on the debug image
-            for count, (x, y) in enumerate(left_lane_boundaries, start=1):
-                self.overlay_image[y + 1, x + 1] = [255 - count / len(left_lane_boundaries) * 100, 0, 0]   # Red for left lane
-            self.overlay_image[left_start[1] + 1, left_start[0] + 1] = [255, 255, 255]
-            return left_lane_boundaries
+        # Draw the lane boundaries on the debug image
+        for count, (x, y) in enumerate(lane_boundaries, start=1):
+            intensity = 255 - count / len(lane_boundaries) * 100
+            if is_left_lane:
+                self.overlay_image[y + 1, x + 1] = [intensity, 0, 0]    # Red for left lane
+            else:
+                self.overlay_image[y + 1, x + 1] = [0, 0, intensity]    # Blue for right lane
 
-    def _track_right_lane(self, right_start: tuple[int, int]) -> list[tuple[int, int]]:
-            right_lane_boundaries = self._follow_lane(right_start, self.edge_mask)
+        # White starting point
+        self.overlay_image[start[1] + 1, start[0] + 1] = [255, 255, 255]
 
-            # draw the right lane boundaries on the debug image
-            for count, (x, y) in enumerate(right_lane_boundaries, start=1):
-                self.overlay_image[y + 1, x + 1] = [0, 0, 255 - count / len(right_lane_boundaries) * 100]   # Blue for right lane
-            self.overlay_image[right_start[1] + 1, right_start[0] + 1] = [255, 255, 255]
-            return right_lane_boundaries
+        return lane_boundaries
 
     def detect(self, observation: np.ndarray) -> tuple[list, list]:
         """
@@ -172,6 +159,8 @@ class LaneDetection:
             left_lane_boundaries (list): A list of points representing the left lane boundaries.
             right_lane_boundaries (list): A list of points representing the right lane boundaries.
         """
+        self.overlay_image = observation.copy() # Used for debugging purposes, to visualize the detected lane boundaries
+
         if observation[-3, 12][0] == 0:
             self.frame = 0      # Reset the frame counter, when the car enters a new track, to detect the domain again
 
@@ -181,7 +170,7 @@ class LaneDetection:
 
         # Phase 1: Preprocessing
         self.cut_image = observation[0:84, 0:98]   # Cut the image
-        self.cut_image[66:self.CAR_BOTTOM_Y, self.CAR_CENTER_X-3:self.CAR_CENTER_X+3] = self.threshold
+        self.cut_image[geo.CAR_Y_PX-6:geo.CAR_Y_PX+5, geo.CAR_X_PX-3:geo.CAR_X_PX+3] = self.threshold
         self.road_mask = self._create_road_mask(self.cut_image)
         # self.debug_image = self.road_mask.copy()
 
@@ -190,8 +179,6 @@ class LaneDetection:
         # self.debug_image = self.edge_mask.copy()
 
         # Phase 3: Zuordnung zu den Fahrspuren
-        self.overlay_image = observation.copy()
-
         left_lane_boundaries = []
         right_lane_boundaries = []
 
@@ -199,10 +186,10 @@ class LaneDetection:
 
         # Append the left and right lane boundaries from the detected edges
         if left_start is not None:
-            left_lane_boundaries = self._track_left_lane(left_start)
+            left_lane_boundaries = self._track_lane(left_start, is_left_lane=True)
 
         if right_start is not None:
-            right_lane_boundaries = self._track_right_lane(right_start)
+            right_lane_boundaries = self._track_lane(right_start, is_left_lane=False)
 
         self.debug_image = self.overlay_image
 

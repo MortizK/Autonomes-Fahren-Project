@@ -10,8 +10,8 @@ SCALE_Y = 96 / 800
 ZOOM = 2.7 * 6.0  # camera zoom after the first second
 
 # Car origin in the image
-CAR_X_PX = 48.0
-CAR_Y_PX = 72.0
+CAR_X_PX = 48
+CAR_Y_PX = 72
 
 # Car dimensions in units
 FRONT_AXLE = 80 * 0.02
