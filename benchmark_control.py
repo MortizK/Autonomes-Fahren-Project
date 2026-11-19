@@ -36,7 +36,7 @@ def _get_env():
     """One environment per process, reused across episodes."""
     global _env
     if _env is None:
-        _env = CarRacingEnvWrapper(gym.make("CarRacing-v3", render_mode="rgb_array"))
+        _env = CarRacingEnvWrapper(gym.make("CarRacing-v3", render_mode="rgb_array", domain_randomize=True))
     return _env
 
 

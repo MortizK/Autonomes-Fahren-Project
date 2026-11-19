@@ -22,7 +22,7 @@ class LaneDetection:
         Detects the color space of the domain (road, grass, etc.) and sets the appropriate rgb thresholds for the lane detection algorithm.
         """
         # Get the average color of the road in the bottom row of the image
-        road_color = observation[self.CAR_BOTTOM_Y-20:self.CAR_BOTTOM_Y, self.CAR_CENTER_X-3, :].mean(axis=0)
+        road_color = observation[self.CAR_BOTTOM_Y-20:self.CAR_BOTTOM_Y, self.CAR_CENTER_X-4, :].mean(axis=0)
         self.threshold = road_color
         print(f"road_color: {road_color}")
 
@@ -31,8 +31,9 @@ class LaneDetection:
         # colors, counts = np.unique(observation.reshape(-1, 3), axis=0, return_counts=True)
         # colors = colors[counts > min_count]
         # counts = counts[counts > min_count]
-        # for color, count in zip(colors, counts):
-        #     print(f"color: {color}   count: {count}")
+        # distances = np.linalg.norm(colors - road_color, axis=1)
+        # for color, count, distance in zip(colors, counts, distances):
+        #     print(f"color: {color} \tcount: {count} \tdistance: {distance}")
 
     def _create_road_mask(self, frame: np.ndarray) -> np.ndarray:
         """
@@ -173,7 +174,10 @@ class LaneDetection:
             left_lane_boundaries (list): A list of points representing the left lane boundaries.
             right_lane_boundaries (list): A list of points representing the right lane boundaries.
         """
-        if self.frame == 15:
+        if observation[-3, 12][0] == 0:
+            self.frame = 0      # Reset the frame counter, when the car enters a new track, to detect the domain again
+
+        if self.frame == 25:
             self._detectDomain(observation)
         self.frame += 1
 
