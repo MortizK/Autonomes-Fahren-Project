@@ -1,6 +1,4 @@
-from matplotlib import image
 import numpy as np
-from scipy import ndimage
 
 
 class LaneDetection:
@@ -126,12 +124,12 @@ class LaneDetection:
         left_start = None
         right_start = None
 
-        white_cols = np.where(edge_mask[row, :] > 0)[0]  # Get the x-coordinates of the white pixels in the bottom row
+        white_cols = np.where(edge_mask[row, :] > 0)[0]
 
         if len(white_cols) == 2:
             left_start = (white_cols[0], row)
             right_start = (white_cols[1], row)
-        elif self.road_mask[row, self.CAR_CENTER_X] == 0:
+        elif self.road_mask[row, self.CAR_CENTER_X] == 255:
             # If the car is on the road, find the closest white pixel to the left and right of the car
             on_the_left = white_cols[white_cols < self.CAR_CENTER_X]
             on_the_right = white_cols[white_cols > self.CAR_CENTER_X]
@@ -189,6 +187,7 @@ class LaneDetection:
 
         # Phase 2: Lane Detection
         self.edge_mask = self._detect_edges(self.road_mask)
+        # self.debug_image = self.edge_mask.copy()
 
         # Phase 3: Zuordnung zu den Fahrspuren
         self.overlay_image = observation.copy()
