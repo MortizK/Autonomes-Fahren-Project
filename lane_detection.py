@@ -20,7 +20,7 @@ class LaneDetection:
         Detects the color space of the domain (road, grass, etc.) and sets the appropriate rgb thresholds for the lane detection algorithm.
         """
         # Get the average color of the road in the bottom row of the image
-        road_color = observation[self.CAR_BOTTOM_Y-20:self.CAR_BOTTOM_Y, self.CAR_CENTER_X-4, :].mean(axis=0)
+        road_color = observation[self.CAR_BOTTOM_Y-20:self.CAR_BOTTOM_Y-10, self.CAR_CENTER_X, :].mean(axis=0)
         self.threshold = road_color
         print(f"road_color: {road_color}")
 
