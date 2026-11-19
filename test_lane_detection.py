@@ -1,5 +1,4 @@
 import argparse
-import time
 
 import cv2
 import gymnasium as gym
@@ -16,16 +15,10 @@ def run(env, input_controller: InputController):
     total_reward = 0.0
     
     # Initialization time of the lane detection algorithm
-    start_time = time.time()
     lane_detection = LaneDetection()
-    end_time = time.time()
-    detection_times = []
 
     while not input_controller.quit:
-        start_time = time.time()
         lane_detection.detect(state_image)
-        end_time = time.time()
-        detection_times.append(end_time - start_time)
 
         cv_image = np.asarray(lane_detection.debug_image, dtype=np.uint8)
         cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
@@ -58,14 +51,6 @@ def run(env, input_controller: InputController):
             state_image, info = env.reset(seed=seed)
             total_reward = 0.0
 
-    # Print Boxplot values of the detection times
-    print(f"p25 : {np.percentile(detection_times, 25):.4f} s   std : {np.std(detection_times):.4f} s")
-    print(f"p50 : {np.percentile(detection_times, 50):.4f} s")
-    print(f"p75 : {np.percentile(detection_times, 75):.4f} s")
-    print(f"p95 : {np.percentile(detection_times, 95):.4f} s")
-    print(f"p99 : {np.percentile(detection_times, 99):.4f} s")
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--no_display", action="store_true", default=False)
@@ -73,7 +58,7 @@ def main():
 
     render_mode = "rgb_array" if args.no_display else "human"
     env = CarRacingEnvWrapper(
-        gym.make("CarRacing-v3", render_mode=render_mode, domain_randomize=False)
+        gym.make("CarRacing-v3", render_mode=render_mode, domain_randomize=True)
     )
     input_controller = InputController()
 

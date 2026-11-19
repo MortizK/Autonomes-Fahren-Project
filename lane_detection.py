@@ -1,4 +1,6 @@
+from matplotlib import image
 import numpy as np
+from scipy import ndimage
 
 
 class LaneDetection:
@@ -12,7 +14,25 @@ class LaneDetection:
         self.debug_image = np.zeros((98, 98, 3), dtype=np.uint8)
         self.road_mask = np.zeros((84, 98), dtype=np.uint8)
         self.edge_mask = np.zeros((84, 98), dtype=np.uint8)
-        self._first_frame = True
+        self.frame = 0
+        self.threshold = [145, 145, 145]
+
+    def _detectDomain(self, observation: np.ndarray):
+        """
+        Detects the color space of the domain (road, grass, etc.) and sets the appropriate rgb thresholds for the lane detection algorithm.
+        """
+        # Get the average color of the road in the bottom row of the image
+        road_color = observation[self.CAR_BOTTOM_Y-20:self.CAR_BOTTOM_Y, self.CAR_CENTER_X-3, :].mean(axis=0)
+        self.threshold = road_color
+        print(f"road_color: {road_color}")
+
+        # find most common color in the image
+        # min_count = 50
+        # colors, counts = np.unique(observation.reshape(-1, 3), axis=0, return_counts=True)
+        # colors = colors[counts > min_count]
+        # counts = counts[counts > min_count]
+        # for color, count in zip(colors, counts):
+        #     print(f"color: {color}   count: {count}")
 
     def _create_road_mask(self, frame: np.ndarray) -> np.ndarray:
         """
@@ -23,13 +43,13 @@ class LaneDetection:
         returns:
             road_mask (np.ndarray): A binary mask where road pixels are 255 and non-road pixels are 0.
         """
-        LIMIT = 145
+        LIMIT = 5
 
         red = frame[..., 0].astype(np.int16)
         green = frame[..., 1].astype(np.int16)
         blue = frame[..., 2].astype(np.int16)
 
-        is_road = (green > LIMIT) | (red > LIMIT) | (blue > LIMIT)
+        is_road = (abs(green - self.threshold[1]) < LIMIT) & (abs(red - self.threshold[0]) < LIMIT) & (abs(blue - self.threshold[2]) < LIMIT)
 
         return is_road.astype(np.uint8) * 255
 
@@ -153,16 +173,15 @@ class LaneDetection:
             left_lane_boundaries (list): A list of points representing the left lane boundaries.
             right_lane_boundaries (list): A list of points representing the right lane boundaries.
         """
+        if self.frame == 15:
+            self._detectDomain(observation)
+        self.frame += 1
 
         # Phase 1: Preprocessing
         self.cut_image = observation[0:84, 0:98]   # Cut the image
-
-        # Mask the car, not in the zoomed-out first frame
-        if not self._first_frame:
-            self.cut_image[66:self.CAR_BOTTOM_Y, self.CAR_CENTER_X-2:self.CAR_CENTER_X+2] = [100, 100, 100]
-        self._first_frame = False
-
+        self.cut_image[66:self.CAR_BOTTOM_Y, self.CAR_CENTER_X-3:self.CAR_CENTER_X+3] = self.threshold
         self.road_mask = self._create_road_mask(self.cut_image)
+        # self.debug_image = self.road_mask.copy()
 
         # Phase 2: Lane Detection
         self.edge_mask = self._detect_edges(self.road_mask)
