@@ -47,7 +47,9 @@ working-dir/
 
 ## 3. Ausführung
 
-.venv\Scripts\python.exe main.py
+```
+python main.py
+```
 
 Die test Dateien können mit `python <test-file>.py` ausgeführt werden. Die Simulation wird sich öffnen und das Fahrzeug wird sich entsprechend der Pipeline bewegen. Um das Endergebnis zu simulieren, kann die `main.py` Datei ausgeführt werden. Sie führt die Pipeline über 5 Iterationen aus und berechnet den durchschnittlichen Score.
 
@@ -62,14 +64,37 @@ Beide Regler rechnen nicht in Pixeln, sondern in Einheiten der Simulation, in ei
 - **Skalierung**: Das 1000x800 Fenster wird auf 96x96 Pixel verkleinert. Quer entspricht eine Einheit 1,56 px, längs 1,94 px. Winkel und Krümmungen direkt in Pixeln wären verzerrt.
 - **Zoom am Start**: Die Kamera zoomt in der ersten Sekunde ein. Der Zoom pro Frame ist bekannt (`camera_zoom`) und wird herausgerechnet. Bis zum halben Zoom ist ein Pixel zu grob, solange ignorieren die Regler den Pfad.
 
-## 6. Querregelung (`lateral_control.py`)
+## 6. Spurerkennung (`lane_detection.py`)
+
+Die Spurerkennung nutzt einen Farbfilter um die Straße von dem Rasen zu unterscheiden, dies ergibt eine Binäre Maske (Straße und nicht Straße)
+
+Damit die Straße auch bei `domain_randomize=True` erkannt wird, wird ein Streifen Straße vor dem Auto genutzt um die Farbe der Straße zu ermitteln.
+
+Mithilfe zweier 1D Convolutions werden sowohl horizontale wie auch vertikale Kanten erkannt, welche in eine Maske vereint werden.
+
+Um aus der Maske die Fahrbahnbegrenzungen werden zwei Walker links und rechts neben dem Auto gestartet. Dies können auch vollständige Kurven Laufen.
+
+![Bild aus `lane_detection.py`: Links mit `domain_randomize=True` und Rechts ohne. Beide zeigen eine Scharfe Linkskurve](./data/debug/readme_lane_detection.png)
+
+## 7. Pfadplanung (`path_planning.py`)
+
+Pfadplanung implementiert eine Mittelspur mittels `nearest point on other lane`
+
+![Bild aus `path_planning.py`: Zeigt eine Linkskurve](./data/debug/readme_path_planning.png)
+
+## 8. Querregelung (`lateral_control.py`)
 
 Die Querregelung nutzt den **Stanley-Regler** an der Vorderachse:
 
-```
-delta = k_psi * psi + arctan(k * e / (k_soft + v)) + k_d * dpsi/dt
-k_psi = L / (L + v * tau)
-```
+$$
+\delta = k_\psi \cdot \psi
+  + \arctan\left(\frac{k \cdot e}{k_\mathrm{soft} + v}\right)
+  + k_d \cdot \frac{d\psi}{dt}
+$$
+
+$$
+k_\psi = \frac{L}{L + v \cdot \tau}
+$$
 
 | Parameter | Standard | Bedeutung |
 | --------- | -------- | --------- |
@@ -83,28 +108,28 @@ k_psi = L / (L + v * tau)
 Erweiterungen gegenüber dem Standard-Stanley:
 
 - **Kurswinkel über eine Sehne**: Statt der Tangente am Lotfußpunkt wird die Richtung zum Pfadpunkt 12 Einheiten weiter genommen. Das glättet das Pixelrauschen und schneidet Kurven leicht an, dadurch sind höhere Kurvengeschwindigkeiten möglich.
-- **Kurswinkel-Verstärkung sinkt mit dem Tempo**: Lenkt das Auto um psi, dreht es sich mit `v * psi / L`. Beim klassischen Stanley (k_psi = 1) wäre der Kurswinkel bei 80 Einheiten/s in 0,04 s ausgeregelt, schneller als die Verzögerung im Regelkreis (ein Frame Kamera, Lenkmotor). Das Auto schwingt dann mit den Frames hin und her. Mit `k_psi = L / (L + v * tau)` dauert das Ausregeln `tau + L / v`, also nie unter 0,1 s. Beim Anfahren bleibt k_psi nahe 1.
+- **Kurswinkel-Verstärkung sinkt mit dem Tempo**: Lenkt das Auto um $\psi$, dreht es sich mit $v \cdot \psi / L$. Beim klassischen Stanley ($k_\psi = 1$) wäre der Kurswinkel bei 80 Einheiten/s in 0,04 s ausgeregelt, schneller als die Verzögerung im Regelkreis (ein Frame Kamera, Lenkmotor). Das Auto schwingt dann mit den Frames hin und her. Mit $k_\psi = \frac{L}{L + v \cdot \tau}$ dauert das Ausregeln $\tau + \frac{L}{v}$, also nie unter 0,1 s. Beim Anfahren bleibt $k_\psi$ nahe 1.
 - **Dämpfung (D-Anteil)**: Die Änderung des Kurswinkelfehlers entspricht der Differenz aus Gierrate des Pfads und des Autos. Der Term dämpft das Aufschwingen bei hohem Tempo. Ein Tiefpass (0,1 s) filtert das Pixelrauschen heraus, ungefiltert hat der D-Anteil das Rauschen der Spurerkennung verstärkt.
 - **Ausgabe in rad**: Die Lenkaktion ist in der Simulation der Soll-Radwinkel in rad (Anschlag ±0,4 rad). Der Regler gibt ihn deshalb direkt aus.
 - **Pfadaussetzer**: Ohne Pfad klingt der letzte Lenkwinkel pro Frame mit Faktor 0,9 ab. Kurze Aussetzer werden überbrückt, ohne dass das Auto dauerhaft eingelenkt bleibt.
 
 Als Alternative wurde Pure Pursuit umgesetzt und verglichen. Stanley war robuster, Pure Pursuit ist deshalb nicht mehr im Code.
 
-## 7. Längsregelung (`longitudinal_control.py`)
+## 9. Längsregelung (`longitudinal_control.py`)
 
 **Zielgeschwindigkeit** aus dem sichtbaren Pfad:
 
-1. Kurvengeschwindigkeit an jedem Pfadpunkt: `v = sqrt(a_quer / kappa)`.
-2. Bremsweg: Ein Punkt im Abstand s erlaubt `sqrt(v_kurve^2 + 2 * a_brems * s)`. Das Minimum über alle Punkte ist die Zielgeschwindigkeit.
+1. Kurvengeschwindigkeit an jedem Pfadpunkt: $v = \sqrt{\frac{a_\mathrm{quer}}{\kappa}}$.
+2. Bremsweg: Ein Punkt im Abstand $s$ erlaubt $\sqrt{v_\mathrm{kurve}^2 + 2 \cdot a_\mathrm{brems} \cdot s}$. Das Minimum über alle Punkte ist die Zielgeschwindigkeit.
 3. Sichtweite: Hinter dem Pfadende kann eine Haarnadelkurve kommen, bis dorthin muss das Auto auf `min_speed` bremsen können. Weniger Sicht bedeutet automatisch langsamer.
 
 Das Krümmungsfenster von ±8 Einheiten lässt kurze Kurven flacher wirken als lange. Das passt zum Fahrverhalten, kurze Kurven schneidet das Auto stärker an. Mit ±4 sinkt der Score auf 924,0 (Haarnadel 913,3).
 
-**PID-Regler**: Der Ausgang ist eine Soll-Beschleunigung. Über gemessene Kennwerte (Vollgas ≈ 44 Einheiten/s², Bremse ≈ 300 · b Einheiten/s²) wird sie in Gas oder Bremse umgerechnet.
+**PID-Regler**: Der Ausgang ist eine Soll-Beschleunigung. Über gemessene Kennwerte (Vollgas $\approx 44\,\mathrm{Einheiten/s^2}$, Bremse $\approx 300 \cdot b\,\mathrm{Einheiten/s^2}$) wird sie in Gas oder Bremse umgerechnet.
 
 - D-Anteil auf die gemessene Beschleunigung statt auf den Fehler, Sprünge der Zielgeschwindigkeit erzeugen so keinen Stoß.
 - Anti-Windup: Integriert wird nur, solange der Ausgang nicht in der Begrenzung steckt.
-- Kammscher Kreis: Die Querbeschleunigung wird aus Lenkwinkel und Tempo geschätzt (`v² · tan(delta) / L`), nur die restliche Haftung bekommt das Gas. Ohne diese Begrenzung brechen die Hinterräder in Kurven aus.
+- Kammscher Kreis: Die Querbeschleunigung wird aus Lenkwinkel und Tempo geschätzt $\frac{v^2 \cdot \tan(\delta)}{L}$, nur die restliche Haftung bekommt das Gas. Ohne diese Begrenzung brechen die Hinterräder in Kurven aus.
 - Bremse höchstens 0,7, darüber blockieren die Räder nach einigen Schritten.
 
 | Parameter | Standard | Bedeutung |

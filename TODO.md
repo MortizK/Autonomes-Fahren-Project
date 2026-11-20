@@ -3,23 +3,23 @@
 ## Lane Detection
 
 - [x] Edge Detection
-- [x] Deciding how to represent the two lanes 
+- [x] Deciding how to represent the two lanes (Decided on List of Points, as the data representation was easier to work with)
   - [x] List of Points?
   - [ ] Interpret Points as mathematical Curves?
 - [x] Transform Edge Detection into two lanes
 - [ ] Edge Cases for Car not on Track
-- [ ] Edge Cases for multiple Starting Points
+- [x] Edge Cases for multiple Starting Points
 - [x] Performance Analysis (Real Time?, how many ms?)
 
 ## Path Planning
 
 - [x] Implement a really simple centerline
-- [ ] Find out the characteristics of the car
+- [x] Find out the characteristics of the car
 - [ ] Find a Path that minimizes a function (time)
-- [ ] Discuss if we are allowed to use the first frame global view
-  - [ ] Do we want to use it and how?
+- [ ] Discuss if we are allowed to use the first frame global view (Never asked)
+  - [x] Do we want to use it and how? (Decided against it, as it eats up a lot of compute on the first frame while not being finished)
   - [ ] Rally Notation? ([Pace Notes](https://en.wikipedia.org/wiki/Pacenotes))
-- [ ] Performance Analysis (Real Time?, how many ms?)
+- [x] Performance Analysis (Real Time?, how many ms?)
 
 ## Lateral Control
 
@@ -35,7 +35,7 @@
 - [x] Edge case: camera zoom during the first second
 - [x] Tune the parameters (benchmark over many seeds, `test_lateral_control.py`)
 - [x] Optional: Pure Pursuit as alternative and compare both (Stanley more robust, Pure Pursuit removed again)
-- [ ] Check the test with `--domain_randomize` once the lane detection supports it
+- [x] Check the test with `--domain_randomize` once the lane detection supports it
 - [x] Performance Analysis (Real Time?, how many ms?)
 
 ## Longitudinal Control
@@ -61,5 +61,4 @@
 
 ## Pipeline
 
-- [ ]
-- [ ] Performance Analysis (Real Time?, how many ms?)
+- [x] Performance Analysis (Real Time?, how many ms?)

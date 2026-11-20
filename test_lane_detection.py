@@ -41,6 +41,13 @@ def run(env, input_controller: InputController):
         state_image, r, done, trunc, info = env.step(a)
         total_reward += r
 
+        # Save the image for debugging purposes
+        # if a[1] > 0.0 and a[2] > 0.0:
+        #     cv2.imwrite(
+        #         f"./data/debug/debug_{seed:06d}_{lane_detection.frame:03d}.png",
+        #         cv2.cvtColor(cv_image, cv2.COLOR_RGB2RGBA),
+        #     )
+
         # Reset environment if the run is skipped
         input_controller.update()
         if done or input_controller.skip:

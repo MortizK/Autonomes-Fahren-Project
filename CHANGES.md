@@ -2,7 +2,8 @@
 
 Dieses Dokument soll wichtige Design Entscheidungen oder Changes Dokumentieren.
 
-- `LaneDetection` nutzt eine Maske die nach Grün + Puffer ausschaut. Dies ist der Hintergrund. Die Inverse davon ist wohl die Track.
+- `LaneDetection` erkennt die Farbe der Strecke und nutzt diese für eine Farbmaske um von Grass und Strecke zu unterscheiden.
+- `pathPlanning` ermittelt eine Mittelspur
 - Die Regler rechnen nicht in Pixeln, sondern in Einheiten der Simulation (`geometry.py`). Das Bild ist quer und längs unterschiedlich skaliert (1,56 / 1,94 px pro Einheit), Winkel und Krümmungen in Pixeln wären verzerrt. Der Zoom in der ersten Sekunde wird über die bekannte Zoomfunktion der Kamera herausgerechnet.
 - `LateralControl` gibt den Soll-Radwinkel in rad zurück. Das entspricht der Simulation (Lenkanschlag ±0,4 rad), eine Normierung auf ±1 würde die Lenkung verfälschen.
 - `LateralControl` nutzt Stanley an der Vorderachse. Der Kurswinkel wird über eine Sehne von 12 Einheiten gemessen statt über die Tangente: glatter, das Auto schneidet Kurven leicht an und kann schneller fahren. Mit der echten Pipeline 925,5 statt 380,8 Punkte (klassischer Stanley, gleiche Längsregelung).
