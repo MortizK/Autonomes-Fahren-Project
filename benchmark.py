@@ -1,9 +1,9 @@
 """
-Controller benchmark (testing only): score and runtime over fixed seeds, headless and parallel.
+Benchmarking (testing only): score and runtime over fixed seeds, headless and parallel.
 
-    python benchmark_control.py --mode pipeline   # full pipeline
-    python benchmark_control.py --mode gt         # controllers on the ground truth centerline
-    python benchmark_control.py --seeds 693592 373468   # specific seeds
+    python benchmark.py --mode pipeline   # full pipeline
+    python benchmark.py --mode gt         # controllers on the ground truth centerline
+    python benchmark.py --seeds 693592 373468   # specific seeds
 
 Tuned on seeds 0-23, evaluated on 1000-1049 (default) and HAIRPIN_SEEDS.
 """

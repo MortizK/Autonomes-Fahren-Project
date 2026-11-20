@@ -51,7 +51,7 @@ working-dir/
 python main.py
 ```
 
-Die test Dateien können mit `python <test-file>.py` ausgeführt werden. Die Simulation wird sich öffnen und das Fahrzeug wird sich entsprechend der Pipeline bewegen. Um das Endergebnis zu simulieren, kann die `main.py` Datei ausgeführt werden. Sie führt die Pipeline über 5 Iterationen aus und berechnet den durchschnittlichen Score.
+Die test Dateien können mit `python <test-file>.py` ausgeführt werden. Die Simulation wird sich öffnen und das Fahrzeug wird sich entsprechend der Pipeline bewegen. Um das Endergebnis zu simulieren, kann die `main.py` Datei ausgeführt werden. Sie führt die Pipeline über 50 Iterationen aus und berechnet den durchschnittlichen Score.
 
 ## 4. Hinweise
 
@@ -75,6 +75,8 @@ Mithilfe zweier 1D Convolutions werden sowohl horizontale wie auch vertikale Kan
 Um aus der Maske die Fahrbahnbegrenzungen werden zwei Walker links und rechts neben dem Auto gestartet. Dies können auch vollständige Kurven Laufen.
 
 ![Bild aus `lane_detection.py`: Links mit `domain_randomize=True` und Rechts ohne. Beide zeigen eine Scharfe Linkskurve](./data/debug/readme_lane_detection.png)
+
+> Wichtig! Da in `main.py` mehrere Durchläufe hintereinander ablaufen, ohne LaneDetection neu zu Initialisieren, wird der Geschwindigkeitsbalken in der UI genutzt um den Start einer neuen Strecke zu Signalisieren. Danach wird wegen dem Zoom noch 25frames (0.5s) gewartet bis die Straßenfarbe neu Erkannt wird.
 
 ## 7. Pfadplanung (`path_planning.py`)
 
@@ -142,3 +144,61 @@ Das Krümmungsfenster von ±8 Einheiten lässt kurze Kurven flacher wirken als l
 | `max_brake` | 0.7 | maximaler Bremswert |
 
 `lateral_accel` liegt an der Haftgrenze von 219 Einheiten/s². 240 war auf kurzen Kurven minimal schneller, weil das Auto sie anschneidet. In langen Haarnadeln geht das aber nicht: Dort rutschte das Auto nach außen, verlor die Strecke und drehte sich.
+
+## 10. Benchmarking (`benchmark.py`)
+
+Das Benchmarking erlaubt das Testen nach Score und die überprüfung nach Laufzeit. Dieses Script arbeitet mit mehreren Workern, wodurch es parallel mehrere Seeds testen kann.
+
+Es gibt mehrere Modi:
+
+```
+python benchmark.py --mode pipeline   # full pipeline
+python benchmark.py --mode gt         # controllers on the ground truth centerline
+python benchmark.py --seeds 693592 373468   # specific seeds
+```
+
+Ein Durchlauf kann dann so aussehen:
+
+```
+$ python benchmark.py --mode pipeline --seeds
+seed 002006  score  936.40  steps  636  lap yes  tiles 100.0%  v  73.0  cte 1.07/ 4.96  offroad   0
+seed 002730  score  926.70  steps  733  lap yes  tiles 100.0%  v  68.0  cte 1.68/ 4.76  offroad   0
+...
+seed 197453  score  928.80  steps  712  lap yes  tiles 100.0%  v  68.1  cte 1.37/ 4.70  offroad   0
+---------------------------
+ avg score:   926.40  (std 6.41)
+ min / max:   914.90 / 937.00
+ low 5 avg:   916.84
+ laps:        28 / 28
+ mean speed:  70.9
+ mean cte:    1.39
+ offroad:     0 steps
+---------------------------
+ runtime per step in ms:       p50     p95     p99     max
+ lane_detection               1.500   2.529   3.499  13.362
+ path_planning                2.623   4.262   5.310  26.935
+ lateral_control              0.384   0.595   0.763   9.903
+ longitudinal_control         0.306   0.479   0.641   8.051
+ total                        4.893   7.626   9.705  29.460
+ budget at 50 FPS: 20 ms
+---------------------------
+```
+
+Benchmarking kann auch mittels `main.py` durchgeführt werden:
+
+```
+$ python main.py --domain_randomize
+episode: 00     seed: 582400     reward: 931.90     avg 5 reward: 931.90     avg reward: 931.90     
+episode: 01     seed: 495130     reward: 932.20     avg 5 reward: 932.05     avg reward: 932.05
+...
+episode: 49     seed: 715788     reward: 931.80     avg 5 reward: 926.88     avg reward: 927.68     
+---------------------------
+ avg score: 927.682000
+ std diff:  8.399350
+ max score: 944.100000
+ min score: 911.300000
+---------------------------
+ top 5 avg score: 941.980000
+ low 5 avg score: 914.400000
+---------------------------
+```
