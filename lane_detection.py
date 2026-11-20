@@ -113,7 +113,7 @@ class LaneDetection:
         left_start = None
         right_start = None
 
-        row = geo.CAR_Y_PX + 8  # Starting Points just below the car, to avoid detecting the car as a lane boundary
+        row = geo.CAR_Y_PX  # Starting Points just below the car, to avoid detecting the car as a lane boundary
         white_cols = np.where(edge_mask[row, :] > 0)[0]
 
         if len(white_cols) == 2:
@@ -121,7 +121,7 @@ class LaneDetection:
             right_start = (white_cols[1], row)
         elif len(white_cols) > 2:
             # Find the closest white pixel to the left and right of the car
-            on_the_left = white_cols[white_cols < geo.CAR_X_PX]
+            on_the_left = white_cols[white_cols <= geo.CAR_X_PX]
             on_the_right = white_cols[white_cols > geo.CAR_X_PX]
 
             # Start with the closest white pixel to the left of the car for the left lane
@@ -163,6 +163,7 @@ class LaneDetection:
 
         if observation[-3, 12][0] == 0:
             self.frame = 0      # Reset the frame counter, when the car enters a new track, to detect the domain again
+            self.threshold = observation[geo.CAR_Y_PX+1, geo.CAR_X_PX] # First Estimate of the road color
 
         if self.frame == 25:
             self._detectDomain(observation)
