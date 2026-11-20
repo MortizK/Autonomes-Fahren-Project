@@ -76,6 +76,19 @@ Um aus der Maske die Fahrbahnbegrenzungen werden zwei Walker links und rechts ne
 
 ![Bild aus `lane_detection.py`: Links mit `domain_randomize=True` und Rechts ohne. Beide zeigen eine Scharfe Linkskurve](./data/debug/readme_lane_detection.png)
 
+<details>
+<summary>Verworfene Ideen</summary>
+
+- Klassische Kantenerkennung mittels Grau-Filter
+- Rekonstruktion der Track mittels dem Rausgezoomten Erstem Frame
+  - Die Globale Übersicht war nicht immer Vollständig sichtbar.
+  - Sehr Rechenintensiv um aus dem "bixelbrei" eine geordnete Rennstrecke zu bekommen (Einmal ~60ms)
+  - Umsetzung nicht beendet
+  - ![Globale Übersicht der Track aus dem Erstem Frame](./data/laneDetection/globalMapfromFirstFrame.png)
+
+</details>
+<br>
+
 > Wichtig! Da in `main.py` mehrere Durchläufe hintereinander ablaufen, ohne LaneDetection neu zu Initialisieren, wird der Geschwindigkeitsbalken in der UI genutzt um den Start einer neuen Strecke zu Signalisieren. Danach wird wegen dem Zoom noch 25frames (0.5s) gewartet bis die Straßenfarbe neu Erkannt wird.
 
 ## 7. Pfadplanung (`path_planning.py`)
@@ -83,6 +96,21 @@ Um aus der Maske die Fahrbahnbegrenzungen werden zwei Walker links und rechts ne
 Pfadplanung implementiert eine Mittelspur mittels `nearest point on other lane`
 
 ![Bild aus `path_planning.py`: Zeigt eine Linkskurve](./data/debug/readme_path_planning.png)
+
+
+<details>
+<summary>Verworfene Ideen</summary>
+
+- Mittelspur-Erkennung mittels Maximalen Kreisen 
+  - Quelle: [Lane Centerline Extraction Based on Surveyed Boundaries](https://pmc.ncbi.nlm.nih.gov/articles/PMC12031461/pdf/sensors-25-02571.pdf)
+  - Wurde verworfen, da es nicht Echtzeitfähig war (Auf Thinkpad X13 getestet)
+- Optimierung der Mittelspur auf die Maximierung der Geschwindigkeit (Racing Lines)
+  - Idee: Ermittlung der größten Kreise durch eine Kurve
+  - Idee: Anpassung der Mittelspur auf Maximierung der Geschwindigkeit
+    - Implementierung zuerst sehr Rechenintensiv und nicht Echtzeitfähig
+    - Nach Änderung der Parameter auf Echtzeitfähigkeit keine Verbesserung zur Mittelspur
+
+</details>
 
 ## 8. Querregelung (`lateral_control.py`)
 
