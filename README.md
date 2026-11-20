@@ -117,9 +117,7 @@ Pfadplanung implementiert eine Mittelspur mittels `nearest point on other lane`
 Die Querregelung nutzt den **Stanley-Regler** an der Vorderachse:
 
 $$
-\delta = k_\psi \cdot \psi
-  + \arctan\left(\frac{k \cdot e}{k_\mathrm{soft} + v}\right)
-  + k_d \cdot \frac{d\psi}{dt}
+\delta = k_\psi \cdot \psi + \arctan\left(\frac{k \cdot e}{k_\mathrm{soft} + v}\right) + k_d \cdot \frac{d\psi}{dt}
 $$
 
 $$
