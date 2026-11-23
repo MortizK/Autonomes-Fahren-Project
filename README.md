@@ -24,7 +24,6 @@ working-dir/
 | - docs/ # Aufgabenstellung, Bewertung, Abschlusspräsentation, Quellen
 | - .gitignore # Definition von Dateien, die nicht von git getrackt werden sollen
 | - car.py # Beschreibt das Fahrzeug und enthält die gesamte Pipeline
-| - CHANGES.md # Wichtige Designentscheidungen
 | - env_wrapper.py # Wrapper für die Gymnasium Car Racing Simulation
 | - FINDINGS.md # Erkenntnisse über Simulation, Fahrzeug und Kamera
 | - geometry.py # Umrechnung Pixel -> Fahrzeugkoordinaten, Pfad und Krümmung für die Regler
@@ -42,7 +41,6 @@ working-dir/
 | - test_longitudinal_control.py # Testet die Längsregelung
 | - test_path_planning.py # Testet die Pfadplanung
 | - test_pipeline.py # Testet die gesamte Pipeline
-| - TODO.md # Aufgabenliste
 ```
 
 ## 3. Ausführung
@@ -104,7 +102,7 @@ Pfadplanung implementiert eine Mittelspur mittels `nearest point on other lane`
 - Mittelspur-Erkennung mittels Maximalen Kreisen 
   - Quelle: [Lane Centerline Extraction Based on Surveyed Boundaries](https://pmc.ncbi.nlm.nih.gov/articles/PMC12031461/pdf/sensors-25-02571.pdf)
   - Wurde verworfen, da es nicht Echtzeitfähig war (Auf Thinkpad X13 getestet)
-- [Dubins Path](https://en.wikipedia.org/wiki/Dubins_path)
+- [Dubins path](https://en.wikipedia.org/wiki/Dubins_path)
 - Optimierung der Mittelspur auf die Maximierung der Geschwindigkeit (Racing Lines)
   - Idee: Ermittlung der größten Kreise durch eine Kurve
   - Idee: Anpassung der Mittelspur auf Maximierung der Geschwindigkeit
