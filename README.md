@@ -104,6 +104,7 @@ Pfadplanung implementiert eine Mittelspur mittels `nearest point on other lane`
 - Mittelspur-Erkennung mittels Maximalen Kreisen 
   - Quelle: [Lane Centerline Extraction Based on Surveyed Boundaries](https://pmc.ncbi.nlm.nih.gov/articles/PMC12031461/pdf/sensors-25-02571.pdf)
   - Wurde verworfen, da es nicht Echtzeitfähig war (Auf Thinkpad X13 getestet)
+- [Dubins Path](https://en.wikipedia.org/wiki/Dubins_path)
 - Optimierung der Mittelspur auf die Maximierung der Geschwindigkeit (Racing Lines)
   - Idee: Ermittlung der größten Kreise durch eine Kurve
   - Idee: Anpassung der Mittelspur auf Maximierung der Geschwindigkeit
